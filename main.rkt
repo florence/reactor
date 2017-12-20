@@ -21,33 +21,58 @@
  emit&
  pause&
  await&
- last&)
+ last&
+ suspend&
+ abort&)
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax) racket/hash racket/stxparam)
 (module+ test (require rackunit))
 
-(define current-reactor (make-parameter #f))
+
+;                                          
+;                                          
+;                                          
+;                                          
+;                                          
+;                                          
+;   ;;;;;;                ;;;              
+;   ;;;;;;;               ;;;              
+;   ;;;  ;;;   ;;;;     ;;;;;;;;   ;;;;    
+;   ;;;   ;;;  ;;;;;;   ;;;;;;;;   ;;;;;;  
+;   ;;;   ;;;     ;;;     ;;;         ;;;  
+;   ;;;   ;;;      ;;;    ;;;          ;;; 
+;   ;;;   ;;;    ;;;;;    ;;;        ;;;;; 
+;   ;;;   ;;;  ;;;;;;;    ;;;      ;;;;;;; 
+;   ;;;   ;;  ;;;  ;;;    ;;;     ;;;  ;;; 
+;   ;;;  ;;;  ;;;  ;;;    ;;;;    ;;;  ;;; 
+;   ;;;;;;;   ;;;;;;;;     ;;;;;; ;;;;;;;; 
+;   ;;;;;      ;;; ;;;      ;;;;;  ;;; ;;; 
+;                                          
+;                                          
+;                                          
+;                                          
+;                                          
 
 ;; A Reactor is a
-;;  (reactor RThread (Listof Thread) (hasheqof Signal Blocked) (listof RThread) (Listof Signal))
-(struct reactor (os active blocked paused signals) #:mutable #:authentic)
+;;  (reactor RThread (Listof Thread) (hasheqof Signal Blocked) ControlTree (hasheqof S SuspendUnless) (Listof Signal))
+(struct reactor (os active blocked ct susps signals) #:mutable #:authentic)
 ;; `os` is the continuation for the OS loop
 ;; `active` are a list of runnable threads
 ;; `blocked` maps signals to blocked thread pairs
-;; `paused` is the list of threads to activate next instant
+;; `ct` the control three for the entire program
+;; `susps` is active suspensions, keys on their blocking signal
 ;; `signals` is a list of all signals in the program, that have been emitted
 ;;   they may be reset inbetween instants
 
 ;; a RThread is a (-> Any), and is the continuation of a thread
 
-;; a process is a (make-process RThread)
+;; a process is a (make-process (ControlTree -> RThread))
 (struct process (thunk) #:constructor-name make-process #:authentic)
-;; `thunk` is the initial thread for this process
-;; processes simply box unrun threads
+;; `thunk` constructs the initial thread for this process, given its control tree
 
-;; a blocked is a (make-blocked RThread RThread)
-(struct blocked (present absent) #:constructor-name make-blocked)
+;; a blocked is a (make-blocked ControlTree RThread RThread)
+(struct blocked (ct present absent) #:constructor-name make-blocked)
 ;; a blocked represents a thread awaiting a signals value.
-;; it will run `present` if the signal is present or `absent` if it is now.
+;; it will run `present` if the signal is present or add `absent` to the control tree if it's not.
 
 ;; a signal is a one of
 ;; (make-value-signal boolean A (listof A) (A A -> A))
@@ -67,6 +92,23 @@
 ;;         otherwise
 ;; `collection` is the list of values it has been emitted with this instant
 ;; `gather` turns collection into the new value between instants
+
+;; a ControlTree is one of:
+;;   (make-top (listof ControlTree) (Listof RThread))
+;;   (make-suspend-unless (listof ControlTree) Signal (Listof RThread))
+;;   (make-preempt-when (listof ControlTree) Signal (Listof RThread))
+
+(struct control-tree (children next) #:mutable)
+
+(struct top control-tree () #:mutable
+  #:constructor-name make-top)
+;; a node with no specific control
+(struct suspend-unless control-tree (signal) #:mutable
+  #:constructor-name make-suspend-unless)
+;; control becomes active when `signal` is emitted
+(struct preempt-when control-tree (signal) #:mutable
+  #:constructor-name make-preempt-when)
+;; tree is removed at the end of instant when the signal is present
 
 ;                                                              
 ;                                                              
@@ -93,12 +135,21 @@
 ;                                                              
 
 (define-syntax-parameter in-process? #f)
+(define-syntax-parameter current-control-tree
+  (lambda (stx) (raise-syntax-error #f "control tree escaped process context" stx)))
 
-(define (run& e) (runf e))
+(define-syntax run&
+  (syntax-parser
+    [(_ e:expr)
+     #`(runf e current-control-tree)]))
 (define-syntax process&
   (syntax-parser
     [(_ e ...)
-     #'(make-process (lambda () e ...))]))
+     #'(make-process
+        (lambda (tree)
+          (syntax-parameterize ([current-control-tree (make-rename-transformer #'tree)])
+            (lambda ()
+              e ...))))]))
 (define-syntax define-process&
   (syntax-parser
     [(_ (name:id args:id ...) body:expr ...)
@@ -108,7 +159,7 @@
 (define-syntax present&
   (syntax-parser
     [(present& S p q)
-     #'(presentf S (lambda () p) (lambda () q))]))
+     #'(presentf current-control-tree S (lambda () p) (lambda () q))]))
 
 (define-syntax signal&
   (syntax-parser
@@ -122,15 +173,35 @@
 (define-syntax par&
   (syntax-parser
     [(par& p ...)
-     #' (parf (list (lambda () p) ...))]))
+     #' (parf current-control-tree (list (lambda () p) ...))]))
 (define-syntax pause&
   (syntax-parser
-    [_:id #'(pausef)]))
+    [_:id #'(pausef current-control-tree)]))
 
 (define emit&
   (case-lambda
     [(S) (emit-pure S)]
     [(S v) (emit-value S v)]))
+
+(define-syntax suspend&
+  (syntax-parser
+    [(suspend& e:expr ... #:unless S)
+     #'(extend-control (begin e ...) S (make-suspend-unless empty empty S))]))
+(define-syntax abort&
+  (syntax-parser
+    [(suspend& e:expr ... #:after S)
+     #'(extend-control (begin e ...) S (make-preempt-when empty empty S))]))
+
+(define-syntax extend-control
+  (syntax-parser
+    [(_ body S controller)
+     #'(let ([new-tree controller])
+         (set-control-tree-children!
+          current-control-tree
+          (cons new-tree (control-tree-children current-control-tree)))
+         (syntax-parameterize ([current-control-tree
+                                (make-rename-transformer #'new-tree)])
+           body))]))
 
 (define-syntax await&
   (syntax-parser
@@ -174,6 +245,7 @@
 
 ;;;;;; OS
 
+(define current-reactor (make-parameter #f))
 (define reactive-tag  (make-continuation-prompt-tag 'react))
 
 ;; Process -> Reactor
@@ -184,29 +256,34 @@
 ;; run a reaction on this reactor
 (define (react& grp)
   (call-with-continuation-prompt
-   (lambda () (os-loop! grp))
+   (lambda () (sched! grp))
    reactive-tag))
 
 ;; (-> Any) -> Reactor
 ;; make a reactor containing only the given thread, which is active
 (define (make-reactor proc)
-  (reactor void (list proc) (make-hasheq) empty empty))
+  (define top-tree (make-top empty empty))
+  (reactor void (list (proc top-tree)) (make-hasheq) top-tree (make-hasheq) empty))
 
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called with a `reactive-tag`
-(define (os-loop! g)
-  (match-define (reactor os active blocked paused signals) g)
+(define (sched! g)
+  (match-define (reactor os active blocked ct susps signals) g)
   (cond
     [(reactor-done? g)
-     (define active
-       (for*/list ([(_ procs) (in-hash blocked)]
-                   [p (in-list procs)])
-         (blocked-absent p)))
+     (for* ([(_ procs) (in-hash blocked)]
+            [b (in-list procs)])
+       (run-next! (blocked-ct b) (blocked-absent b)))
+     (define active (get-next-active! ct))
+     (define new-susps
+       (let ([new-susps (make-hasheq)])
+         (add-suspends! new-susps (get-top-level-susps ct))
+         new-susps))
      (set-reactor-os! g void)
-     (set-reactor-active! g (append active paused))
+     (set-reactor-active! g active)
      (set-reactor-blocked! g (make-hasheq))
-     (set-reactor-paused! g empty)
      (set-reactor-signals! g empty)
+     (set-reactor-susps! g new-susps)
      (for ([S signals])
        (reset-signal! S))]
     [else
@@ -218,7 +295,57 @@
         (parameterize ([current-reactor g])
           (next)))
       reactive-tag)
-     (os-loop! g)]))
+     (sched! g)]))
+
+;; ControlTree -> (listof RThread)
+;; get any threads that should start active in the next instant
+;; EFFECT: removes them from the control tree
+(define (get-next-active! ct)
+  (define (get-next-active/filter! ct)
+    (define (rec cts)
+      (for/fold ([threads empty] [children empty])
+                ([ct (in-list cts)])
+        (define-values (t ct2) (get-next-active/filter! ct))
+        (values (append t threads) (if ct2 (cons ct2 cts) cts))))
+    (match ct
+      [(top children threads)
+       (define-values (t child) (rec children))
+       (set-control-tree-next! ct empty)
+       (set-control-tree-children! ct child)
+       (values (append threads t) ct)]
+      [(preempt-when children signal threads)
+       (define-values (t child) (rec children))
+       (set-control-tree-next! ct empty)
+       (set-control-tree-children! ct child)
+       (values (append threads t)
+               (and (not (signal-status signal))
+                    ct))]
+      ;; TODO should we traverse if the signal was present?
+      [(suspend-unless _ _ _) (values empty ct)]))
+  ;; ---- IN ----
+  (define-values (threads _) (get-next-active/filter! ct))
+  ;; _ must be ct here
+  threads)
+
+;; ControlTree -> (Listof SuspendUnless)
+(define (get-top-level-susps ct)
+  (cond
+    [(and (suspend-unless? ct)
+          (not (signal-status (suspend-unless-signal ct))))
+     (list ct)]
+    [else
+     (append-map get-top-level-susps (control-tree-children ct))]))
+
+;; ControlTree -> (Listof RThread)
+(define (get-top-level-threads ct)
+  (cond
+    [(and (suspend-unless? ct)
+          (not (signal-status (suspend-unless-signal ct))))
+     (list)]
+    [else
+     (append
+      (control-tree-next ct)
+      (append-map get-top-level-threads (control-tree-children ct)))]))
 
 ;; Signal -> Void
 ;; cleanup signal for next instant
@@ -255,12 +382,12 @@
   (set-reactor-active!
    (current-reactor)
    (cons thrd (reactor-active (current-reactor)))))
-;; RThread -> Void
+;; ControlTree RThread -> Void
 ;; register this thread for the next instant
-(define (run-next! thrd)
-  (set-reactor-paused!
-   (current-reactor)
-   (cons thrd (reactor-paused (current-reactor)))))
+(define (run-next! ct thrd)
+  (set-control-tree-next!
+   ct
+   (cons thrd (control-tree-next ct))))
 
 ;;;;;; running
 
@@ -268,7 +395,7 @@
 (define last& value-signal-value)
 
 ;; Process -> Any
-(define (runf proc) ((process-thunk proc)))
+(define (runf proc control-tree) (((process-thunk proc) control-tree)))
 
 ;; PureSignal -> Void
 ;; emit the signal
@@ -291,7 +418,12 @@
 
 ;; Signal -> Void
 ;; Unblock every thread waiting on S using its `present` continuation
+;; and awake every suspend-unless
 (define (unblock! S)
+  (unblock-threads! S)
+  (unblock-suspends! S))
+
+(define (unblock-threads! S)
   (define grp (current-reactor))
   (define blocked (reactor-blocked grp))
   (define unblocked (hash-ref blocked S empty))
@@ -301,19 +433,37 @@
    (append (reactor-active grp)
            (map blocked-present unblocked))))
 
-;; -> Void
+(define (unblock-suspends! S)
+  (define susps (reactor-susps (current-reactor)))
+  (define trees (hash-ref susps S empty))
+  (hash-remove! susps S)
+  (for ([sp (in-list trees)])
+    (for-each activate! (control-tree-next sp))
+    (set-control-tree-next! sp empty)
+    (define new-sp (append-map get-top-level-susps (control-tree-children sp)))
+    (define new-threads (append-map get-top-level-threads (control-tree-children sp)))
+    (for-each activate! new-threads)
+    (add-suspends! susps new-sp)))
+
+(define (add-suspends! susps new-sp)
+  (for ([sp (in-list new-sp)])
+    (define S (suspend-unless-signal sp))
+    (hash-set! susps
+               S
+               (cons sp (hash-ref susps S empty)))))
+
+;; ControlTree -> Void
 ;; suspend the current thread until the next instant
-(define (pausef)
+(define (pausef ct)
   (call/cc
    (lambda (k)
-     (define grp (current-reactor))
-     (run-next! (lambda () (k (void))))
+     (run-next! ct (lambda () (k (void))))
      (switch!))
    reactive-tag))
 
-;; Signal (-> Any) (-> Any) -> Any
+;; ControlTree Signal (-> Any) (-> Any) -> Any
 ;; dispatch on signal status, or block if not ready yet
-(define (presentf S p q)
+(define (presentf ct S p q)
   (cond
     [(signal-status S) (p)]
     [else
@@ -322,7 +472,8 @@
       (lambda (k)
         (hash-set! blocked
                    S
-                   (cons (make-blocked (lambda () (p) (k (void)))
+                   (cons (make-blocked ct
+                                       (lambda () (p) (k (void)))
                                        (lambda () (q) (k (void))))
                          (hash-ref blocked S empty)))
         (switch!))
@@ -343,9 +494,9 @@
               (f (last& S)))
             (run& (await-value S f))))
 
-;; (Listof RThread) -> Any
+;; ControlTree (Listof RThread) -> Any
 ;; run all threads, blocking the current thread until all have completed
-(define (parf threads)
+(define (parf ct threads)
   (define counter (length threads))
   ;; TODO optimization mentioned in RML paper:
   ;; pass boxed counter around, so that when

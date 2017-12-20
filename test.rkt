@@ -91,4 +91,23 @@
  (check-false res)
  (react& r)
  (check-true res))
+
+
+(test-begin
+ (define seen #f)
+ (define-process& (await-when)
+   (signal& (act S)
+     (par&
+      (suspend&
+       (await& #:immediate S) (set! seen #t)
+       #:unless act)
+      (begin (emit& act) pause&           pause& (emit& act))
+      (begin             pause& (emit& S) pause& (emit& S)))))
+ (define r (start& (await-when)))
+ (react& r)
+ (check-false seen)
+ (react& r)
+ (check-false seen)
+ (react& r)
+ (check-true seen))
        
