@@ -9,14 +9,15 @@
  reactor-done?
  ;; running
  start&
- run&
  react&
  ;; process creation
  process&
  define-process&
  ;; forms
+ run&
  present&
  signal&
+ define-signal&
  par&
  emit&
  pause&
@@ -161,14 +162,22 @@
     [(present& S p q)
      #'(presentf current-control-tree S (lambda () p) (lambda () q))]))
 
+(define-syntax define-signal&
+  (syntax-parser
+    [(_ S:id)
+     #'(define S (make-pure-signal #f))]
+    [(_ S:id default:expr #:gather gather:expr)
+     #'(define S (make-value-signal #f default empty gather))]))
 (define-syntax signal&
   (syntax-parser
     [(signal& S:id e) #'(signal& (S) e)]
     [(signal& (S:id ...) e ...)
-     #'(let ([S (make-pure-signal #f)] ...)
+     #'(let ()
+         (define-signal& S) ...
          e ...)]
     [(signal& ([S:id default:expr #:gather gather:expr] ...) e ...)
-     #'(let ([S (make-value-signal #f default empty gather)] ...)
+     #'(let ()
+         (define-signal& S default #:gather gather) ...
          e ...)]))
 (define-syntax par&
   (syntax-parser
