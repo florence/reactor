@@ -392,8 +392,15 @@
        (set-control-tree-children! ct child)
        (if (signal-status signal)
            (values (cons k t) #f)
-           (values (append threads t) ct))]
+           (values (append threads t)
+                   (if (empty? child) #f ct)))]
       ;; TODO should we traverse if the signal was present?
+      [(suspend-unless children threads signal)
+       #:when (signal-status signal)
+       (define-values (t child) (rec children))
+       (set-control-tree-next! ct (append t threads))
+       (set-control-tree-children! ct child)
+       (values empty (if (empty? child) #f ct))]
       [(suspend-unless _ _ _) (values empty ct)]))
   ;; ---- IN ----
   (define-values (threads _) (get-next-active/filter! ct))
