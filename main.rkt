@@ -8,23 +8,26 @@
  process?
  reactor-done?
  ;; running
- start&
- react&
+ start
+ react
  ;; process creation
- process&
- define-process&
+ (rename-out [process* process])
+ define-process
  ;; forms
  run&
  present&
- signal&
- define-signal&
+ (rename-out [signal* signal])
+ define-signal
  par&
  emit&
  pause&
  await&
- last&
+ last
+ last?
  suspend&
- abort&)
+ abort&
+ loop&
+ halt&)
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax) racket/hash racket/stxparam)
 (module+ test (require rackunit))
 
@@ -79,7 +82,7 @@
 ;; (make-value-signal boolean A (listof A) (A A -> A))
 ;; (make-pure-signal boolean)
 
-(struct signal (status) #:mutable #:authentic)
+(struct signal (status last?) #:mutable #:authentic)
 
 (struct pure-signal signal () #:mutable #:authentic
   #:constructor-name make-pure-signal)
@@ -107,7 +110,7 @@
 (struct suspend-unless control-tree (signal) #:mutable
   #:constructor-name make-suspend-unless)
 ;; control becomes active when `signal` is emitted
-(struct preempt-when control-tree (signal) #:mutable
+(struct preempt-when control-tree (signal kont) #:mutable
   #:constructor-name make-preempt-when)
 ;; tree is removed at the end of instant when the signal is present
 
@@ -143,7 +146,7 @@
   (syntax-parser
     [(_ e:expr)
      #`(runf e current-control-tree)]))
-(define-syntax process&
+(define-syntax process*
   (syntax-parser
     [(_ e ...)
      #'(make-process
@@ -151,33 +154,35 @@
           (syntax-parameterize ([current-control-tree (make-rename-transformer #'tree)])
             (lambda ()
               e ...))))]))
-(define-syntax define-process&
+(define-syntax define-process
   (syntax-parser
+    [(_ name:id body ...)
+     #'(define name (process* body ...))]
     [(_ (name:id args:id ...) body:expr ...)
      #'(define (name args ...)
-         (process& body ...))]))
+         (process* body ...))]))
 
 (define-syntax present&
   (syntax-parser
     [(present& S p q)
      #'(presentf current-control-tree S (lambda () p) (lambda () q))]))
 
-(define-syntax define-signal&
+(define-syntax define-signal
   (syntax-parser
     [(_ S:id)
-     #'(define S (make-pure-signal #f))]
+     #'(define S (make-pure-signal #f #f))]
     [(_ S:id default:expr #:gather gather:expr)
-     #'(define S (make-value-signal #f default empty gather))]))
-(define-syntax signal&
+     #'(define S (make-value-signal #f #f default empty gather))]))
+(define-syntax signal*
   (syntax-parser
-    [(signal& S:id e) #'(signal& (S) e)]
-    [(signal& (S:id ...) e ...)
+    [(signal S:id e) #'(signal (S) e)]
+    [(signal (S:id ...) e ...)
      #'(let ()
-         (define-signal& S) ...
+         (define-signal S) ...
          e ...)]
-    [(signal& ([S:id default:expr #:gather gather:expr] ...) e ...)
+    [(signal ([S:id default:expr #:gather gather:expr] ...) e ...)
      #'(let ()
-         (define-signal& S default #:gather gather) ...
+         (define-signal S default #:gather gather) ...
          e ...)]))
 (define-syntax par&
   (syntax-parser
@@ -199,7 +204,7 @@
 (define-syntax abort&
   (syntax-parser
     [(suspend& e:expr ... #:after S)
-     #'(extend-control (begin e ...) S (make-preempt-when empty empty S))]))
+     #'(%% k (extend-control (begin e ...) S (make-preempt-when empty empty S (lambda () (k (void))))))]))
 
 (define-syntax extend-control
   (syntax-parser
@@ -225,6 +230,57 @@
                [_ (run& (await-value S f))])))
          (run& (await-value S f)))]))
 
+(define-syntax loop&
+  (syntax-parser
+    [(loop& p ...)
+     #'(let loop ()
+         p ...
+         (loop))]))
+
+(define-syntax halt&
+  (syntax-parser
+    [halt:id #'(loop& pause&)]))
+
+;                                                                                            
+;                                                                                            
+;                                                                                            
+;                                                                                            
+;                                                                                            
+;                                                                                            
+;   ;;;;;;;                                                                                  
+;   ;;;;;;;;                                                                                 
+;   ;;;  ;;;  ;;;;; ;;;   ;;;;        ;;;;     ;;;;      ;;;;      ;;;;      ;;;;      ;;;;  
+;   ;;;   ;;; ;;;;;;;;;  ;;;;;;;    ;;;;;;    ;;;;;;   ;;;;;;    ;;;;;;     ;;;;;;   ;;;;;;  
+;   ;;;   ;;;   ;;;;;   ;;;  ;;;   ;;;       ;;   ;;  ;;;       ;;;        ;;   ;;  ;;;      
+;   ;;;   ;;;   ;;;    ;;;    ;;; ;;;        ;;   ;;; ;;;;      ;;;;       ;;   ;;; ;;;;     
+;   ;;;  ;;;    ;;;    ;;;    ;;; ;;;       ;;;;;;;;;  ;;;;;     ;;;;;    ;;;;;;;;;  ;;;;;   
+;   ;;;;;;;     ;;;    ;;;    ;;; ;;;       ;;;;;;;;;    ;;;;      ;;;;   ;;;;;;;;;    ;;;;  
+;   ;;;;;       ;;;    ;;;    ;;; ;;;       ;;;            ;;;       ;;;  ;;;            ;;; 
+;   ;;;         ;;;     ;;;  ;;;   ;;;       ;;;           ;;;       ;;;   ;;;           ;;; 
+;   ;;;       ;;;;;;;;  ;;;;;;;     ;;;;;;    ;;;;;;  ;;;;;;;   ;;;;;;;     ;;;;;;  ;;;;;;;  
+;   ;;;       ;;;;;;;;    ;;;;       ;;;;;      ;;;;  ;;;;;     ;;;;;         ;;;;  ;;;;;    
+;                                                                                            
+;                                                                                            
+;                                                                                            
+;                                                                                            
+;                                                                                            
+
+
+
+;; Signal -> Process
+;; block until the signal is present (including in this instant)
+(define-process (await-immediate S)
+  (present& S (void) (run& (await-immediate S))))
+
+;; ValueSignal (Any -> Any) -> Process
+;; Await a value for the signal S, and give it to `f`
+;; when ready
+(define-process (await-value S f)
+  (present& S
+            (begin
+              pause&
+              (f (last S)))
+            (run& (await-value S f))))
 
 
 ;                                                                        
@@ -256,14 +312,23 @@
 
 (define current-reactor (make-parameter #f))
 (define reactive-tag  (make-continuation-prompt-tag 'react))
+(define-syntax %%
+  (syntax-parser
+    [(_ k:id body ...)
+     #'(call/cc (lambda (k) body ...) reactive-tag)]))
 
 ;; Process -> Reactor
-(define (start& proc)
+(define (start proc)
   (make-reactor (process-thunk proc)))
 
-;; Reactor -> Any
+;; Reactor (Listof (or PureSignal (List ValueSignal Any))) -> Any
 ;; run a reaction on this reactor
-(define (react& grp)
+(define (react grp . signals)
+  (parameterize ([current-reactor grp])
+    (for ([i (in-list signals)])
+      (match i
+        [(list a b) (emit-value a b)]
+        [a (emit-pure a)])))
   (call-with-continuation-prompt
    (lambda () (sched! grp))
    reactive-tag))
@@ -293,17 +358,16 @@
      (set-reactor-blocked! g (make-hasheq))
      (set-reactor-signals! g empty)
      (set-reactor-susps! g new-susps)
-     (for ([S signals])
-       (reset-signal! S))]
+     (for ([S (in-list (remove-duplicates signals eq?))])
+       (reset-signal! g S))]
     [else
      (define next (first active))
      (set-reactor-active! g (rest active))
-     (call/cc
-      (lambda (k)
-        (set-reactor-os! g (lambda () (k (void))))
-        (parameterize ([current-reactor g])
-          (next)))
-      reactive-tag)
+     (%%
+      k
+      (set-reactor-os! g (lambda () (k (void))))
+      (parameterize ([current-reactor g])
+        (next)))
      (sched! g)]))
 
 ;; ControlTree -> (listof RThread)
@@ -322,13 +386,13 @@
        (set-control-tree-next! ct empty)
        (set-control-tree-children! ct child)
        (values (append threads t) ct)]
-      [(preempt-when children signal threads)
+      [(preempt-when children threads signal k)
        (define-values (t child) (rec children))
        (set-control-tree-next! ct empty)
        (set-control-tree-children! ct child)
-       (values (append threads t)
-               (and (not (signal-status signal))
-                    ct))]
+       (if (signal-status signal)
+           (values (cons k t) #f)
+           (values (append threads t) ct))]
       ;; TODO should we traverse if the signal was present?
       [(suspend-unless _ _ _) (values empty ct)]))
   ;; ---- IN ----
@@ -356,15 +420,19 @@
       (control-tree-next ct)
       (append-map get-top-level-threads (control-tree-children ct)))]))
 
-;; Signal -> Void
+;; Reactor Signal -> Void
 ;; cleanup signal for next instant
-(define (reset-signal! S)
+(define (reset-signal! g S)
   (when (and (value-signal? S) (signal-status S))
     (define c (value-signal-collection S))
     (set-value-signal-value!
      S
      (foldl (value-signal-gather S) (first c) (rest c)))
     (set-value-signal-collection! S empty))
+  (set-signal-last?! S (signal-status S))
+  ;; re-add signal to emission list, so its last value is correctly changed
+  (when (signal-status S)
+    (set-reactor-signals! g (cons S (reactor-signals g))))
   (set-signal-status! S #f))
 
 ;; -> Any
@@ -401,7 +469,8 @@
 ;;;;;; running
 
 ;; ValueSignal -> Any
-(define last& value-signal-value)
+(define last value-signal-value)
+(define last? signal-last?)
 
 ;; Process -> Any
 (define (runf proc control-tree) (((process-thunk proc) control-tree)))
@@ -464,11 +533,10 @@
 ;; ControlTree -> Void
 ;; suspend the current thread until the next instant
 (define (pausef ct)
-  (call/cc
-   (lambda (k)
-     (run-next! ct (lambda () (k (void))))
-     (switch!))
-   reactive-tag))
+  (%%
+   k
+   (run-next! ct (lambda () (k (void))))
+   (switch!)))
 
 ;; ControlTree Signal (-> Any) (-> Any) -> Any
 ;; dispatch on signal status, or block if not ready yet
@@ -477,31 +545,16 @@
     [(signal-status S) (p)]
     [else
      (define blocked (reactor-blocked (current-reactor)))
-     (call/cc
-      (lambda (k)
-        (hash-set! blocked
-                   S
-                   (cons (make-blocked ct
-                                       (lambda () (p) (k (void)))
-                                       (lambda () (q) (k (void))))
-                         (hash-ref blocked S empty)))
-        (switch!))
-      reactive-tag)]))
+     (%%
+      k
+      (hash-set! blocked
+                 S
+                 (cons (make-blocked ct
+                                     (lambda () (p) (k (void)))
+                                     (lambda () (q) (k (void))))
+                       (hash-ref blocked S empty)))
+      (switch!))]))
 
-;; Signal -> Void
-;; block until the signal is present (including in this instant)
-(define-process& (await-immediate S)
-  (present& S (void) (run& (await-immediate S))))
-
-;; ValueSignal (Any -> Any) -> Any
-;; Await a value for the signal S, and give it to `f`
-;; when ready
-(define-process& (await-value S f)
-  (present& S
-            (begin
-              pause&
-              (f (last& S)))
-            (run& (await-value S f))))
 
 ;; ControlTree (Listof RThread) -> Any
 ;; run all threads, blocking the current thread until all have completed
@@ -511,8 +564,7 @@
   ;; pass boxed counter around, so that when
   ;; a thread is dynamically allocated it can
   ;; reuse/join the outer thread group
-  (call/cc
-   (lambda (k)
+  (%% k
      (for/list ([t (in-list threads)])
        (activate!
         (lambda ()
@@ -521,5 +573,4 @@
           (when (zero? counter)
             (activate! (lambda () (k (void)))))
           (switch!))))
-     (switch!))
-   reactive-tag))
+     (switch!)))

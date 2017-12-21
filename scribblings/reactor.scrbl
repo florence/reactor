@@ -1,5 +1,6 @@
 #lang scribble/manual
-@(require (for-label racket reactor))
+@(require (for-label (except-in racket process last)
+                     reactor))
 
 @title{Reactor: A synchronous reactive language}
 @defmodule[reactor]
@@ -8,32 +9,40 @@
 change without warning.
 
 @section{Running Programs}
-@defproc[(start& [proc process?]) reactor?]{
+@defproc[(start [proc process?]) reactor?]{
  Create a new reactor with a single thread.
 }
 
-@defproc[(react& [r reactor?]) any]{
+@defproc[(react [r reactor?]) any]{
  Run one reaction in the reactor.
 }
 
 @section{Creating Processes}
 
-@defform[(define-process& (func args ...) body ...)]{ Create
- a new function, @racket[func] which takes @racket[args] and
- returns the process defined by @racket[body].
+@defform*[((define-process id body ...)
+           (define-process (id args ...) body ...))]{
+                                                      
+ Define new process.
+                                                      
+ The second variant creates a new function, @racket[func]
+ which takes @racket[args] and returns the process defined by
+ @racket[body].
+ 
 }
 
-@defform[(process& body ...)]{
+@defform[(process body ...)]{
  Create a new process.
 }
 
 @section{Defining Processes}
 
 A process may contain arbitrary racket code. In addition, it
-may use the use the following forms.
+may use the use the following forms. By convention forms
+ending in a @racket[&] may only be used inside of a
+@racket[process] or @racket[define-process].
 
 @(define valid @list{Only valid inside
- of a @racket[process&] or @racket[define-process&].})
+ of a @racket[process] or @racket[define-process].})
 
 @defform[(run& proc)]{
                       
@@ -45,12 +54,26 @@ may use the use the following forms.
 @defform[(par& e ...)]{
 
  Runs each @racket[e] independently in the current process. This blocks
- the current process until each new thread has finished.
+ the current process until each new thread has finished. @valid
                        
+}
+
+@defform[(loop& body ...)]{
+
+ Loop @racket[body]s forever. The body of the loop must be
+ non-instantaneous: it must pause each instant the loop
+ (re)starts. @valid
+                        
 }
 
 @defidform[paused&]{
   Block the current thread until the next reaction. @valid
+}
+
+@defidform[halt&]{
+
+ Block this thread forever. @valid
+                  
 }
 
 @subsection{Signals}
@@ -66,9 +89,9 @@ may use the use the following forms.
                                                      
 }
 
-@defform*[((signal& S e)
-           (signal& (S ...) e)
-           (signal& ([S default #:gather gather] ...) e))]{
+@defform*[((signal S e)
+           (signal (S ...) e)
+           (signal ([S default #:gather gather] ...) e))]{
 
  Analogous to @racket[let], but for signals.
               
@@ -98,10 +121,16 @@ may use the use the following forms.
  
 }
 
-@defproc[(last& [S value-signal?]) any]{
+@defproc[(last [S value-signal?]) any]{
 
  Gets the value of @racket[S] in the previous instant.
                                         
+}
+
+@defproc[(last? [S signal?]) boolean?]{
+
+ Was this signal emitted in the previous instant?
+
 }
 
 @subsection{Control}
@@ -109,14 +138,15 @@ may use the use the following forms.
 @defform[(suspend& e ... #:unless S)]{
                                       
  Runs the body of the suspend unless @racket[S] any instant
- where @racket[S] is emitted. Suspends the body and blocks otherwise.
+ where @racket[S] is emitted. Suspends the body and blocks
+ otherwise. @valid
  
 }
 
-@defform[(abort& e ... #:when S)]{
+@defform[(abort& e ... #:after S)]{
 
  Runs the body until @racket[S] is emitted. The body is then
- aborted in the next instant.
+ aborted in the next instant. @valid
 
 }
 
