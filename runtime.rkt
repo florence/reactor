@@ -12,8 +12,8 @@
          add-new-control-tree!
          last?
          last
-         start
-         react
+         prime
+         react!
          reactor-done?
          %%
          activate-suspends!
@@ -38,12 +38,12 @@
   
 
 ;; Process -> Reactor
-(define (start proc)
+(define (prime proc)
   (make-reactor (process-thunk proc)))
 
 ;; Reactor (Listof (or PureSignal (List ValueSignal Any))) -> Any
 ;; run a reaction on this reactor
-(define (react grp . signals)
+(define (react! grp . signals)
   (parameterize ([current-reactor grp])
     (for ([i (in-list signals)])
       (match i

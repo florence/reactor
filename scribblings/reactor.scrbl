@@ -9,16 +9,23 @@
 change without warning.
 
 @section{Running Programs}
-@defproc[(start [proc process?]) reactor?]{
- Create a new reactor with a single thread.
+@defproc[(prime [proc process?]) reactor?]{
+                                           
+ Create a new reactor with primed the one thread.
+ 
 }
 
-@defproc[(react [r reactor?]
-                [start-signals (or/c pure-signal? (list/c value-signal? any/c))] ...)
+@defproc[(react! [r reactor?]
+                 [start-signals (or/c pure-signal? (list/c value-signal? any/c))] ...)
          any]{
 
  Run one reaction in the reactor. The reactions begins by
  emitting the given signals with the given value.
+
+ @bold{Warning:} @racket[react!] is not thread safe. Two
+ reactions in @racket[r] should not take place concurrently,
+ and @tech{signals} used by @racket[r] should not be observed out
+ side of @racket[r] during a reaction.
 
 }
 
@@ -52,7 +59,7 @@ ending in a @racket[&] may only be used inside of a
 @defform[(run& proc)]{
                       
  Start the given process within the
- current one, blocking until it completes. @valid
+ current one, blocking the thread until it completes. @valid
  
 }
 
@@ -83,6 +90,8 @@ ending in a @racket[&] may only be used inside of a
 
 @subsection{Signals}
 
+@deftech{Signals} are the core communication mechanism within a Reactor.
+
 @defform*[((define-signal S)
            (define-signal S default #:gather gather))]{
 
@@ -90,7 +99,8 @@ ending in a @racket[&] may only be used inside of a
  signal, with no value. The second variant defines a value-carrying signal.
  The default value on the signal will be @racket[default]. Multiple emissions
  of the signal will be combined with @racket[gather] which should be a
- associative procedure of two arguments.
+ associative procedure of two arguments. The value emitted on a signal can only
+ be observe in the next instant.
                                                      
 }
 

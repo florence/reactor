@@ -11,8 +11,8 @@
   [last (-> value-signal? any/c)]
   [last? (-> signal? any)]
   ;; running
-  [start (-> process? reactor?)]
-  [react (-> reactor? (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
+  [prime (-> process? reactor?)]
+  [react! (-> reactor? (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
  ;; process creation
  (rename-out [process* process])
  define-process

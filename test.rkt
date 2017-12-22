@@ -3,23 +3,23 @@
 (module+ test
   (require rackunit)
   (test-begin
-   (define g (start (process (void))))
+   (define g (prime (process (void))))
    (check-false (reactor-done? g))
-   (check-not-exn (lambda () (react g)))
+   (check-not-exn (lambda () (react! g)))
    (check-true (reactor-done? g))
-   (check-not-exn (lambda () (react g)))
+   (check-not-exn (lambda () (react! g)))
    (check-true (reactor-done? g))
-   (check-not-exn (lambda () (react g))))
+   (check-not-exn (lambda () (react! g))))
   (test-begin
-   (define r (start (process halt&)))
+   (define r (prime (process halt&)))
    (check-false (reactor-done? r))
-   (react r)
+   (react! r)
    (check-false (reactor-done? r))
-   (react r)
+   (react! r)
    (check-false (reactor-done? r))
-   (react r)
+   (react! r)
    (check-false (reactor-done? r))
-   (react r)
+   (react! r)
    (check-false (reactor-done? r)))
   
   (test-begin
@@ -28,10 +28,10 @@
      (process
       pause&
       (set! done #t)))
-   (define grp (start p1))
-   (react grp)
+   (define grp (prime p1))
+   (react! grp)
    (check-false done)
-   (react grp)
+   (react! grp)
    (check-true done))
   
   (test-begin
@@ -41,81 +41,81 @@
      (process
       (signal S
         (present& S (set! present #t) (set! absent #t)))))
-   (define grp (start p1))
-   (react grp)
+   (define grp (prime p1))
+   (react! grp)
    (check-false present)
    (check-false absent)
-   (react grp)
+   (react! grp)
    (check-false present)
    (check-true absent))
 
   (test-begin
    (define found #f)
    (define g1
-     (start
+     (prime
       (process
        (signal S
          (par&
           (begin pause& (emit& S))
           (begin (await& #:immediate S) (set! found #t)))))))
-   (react g1)
+   (react! g1)
    (check-false found)
-   (react g1)
+   (react! g1)
    (check-true found))
   (test-begin
    (define found #f)
    (define g1
-     (start
+     (prime
       (process
        (define-signal S)
        (par&
         (begin pause& (emit& S))
         (begin (await& #:immediate S) (set! found #t))))))
-   (react g1)
+   (react! g1)
    (check-false found)
-   (react g1)
+   (react! g1)
    (check-true found))
   (test-begin
    (define-signal O1)
    (define-signal O2)
    (define r
-     (start
+     (prime
       (process
        (par& (emit& O1) (emit& O2)))))
-   (react r)
+   (react! r)
    (check-true (last? O1))
    (check-true (last? O2)))
   (test-begin
    (define-signal O1)
    (define-signal O2)
    (define r
-     (start
+     (prime
       (process
        (par& (begin pause& (emit& O1))
              (begin pause& (emit& O2))))))
-   (react r)
+   (react! r)
    (check-false (last? O1))
    (check-false (last? O2))
-   (react r)
+   (react! r)
    (check-true (last? O1))
    (check-true (last? O2)))
   (test-begin
    (define-signal I)
    (define-signal O)
    (define r
-     (start
+     (prime
       (process
        (await& I)
        (emit& O))))
-   (react r)
+   (react! r)
    (check-false (last? O))
-   (react r I)
+   (react! r I)
    (check-true (last? O)))
 
   (test-begin
    (define res #f)
    (define r
-     (start
+     (prime
       (process
        (define-signal S 0 #:gather +)
        (par&
@@ -123,14 +123,14 @@
         (await&
          S
          [n (set! res n)])))))
-   (react r)
+   (react! r)
    (check-false res)
-   (react r)
+   (react! r)
    (check-equal? res 1))
   (test-begin
    (define res #f)
    (define r
-     (start
+     (prime
       (process
        (define-signal S 0 #:gather +)
        (par&
@@ -139,9 +139,9 @@
         (await&
          S
          [n (set! res n)])))))
-   (react r)
+   (react! r)
    (check-false res)
-   (react r)
+   (react! r)
    (check-equal? res 3))
   (test-begin
    (define res #f)
@@ -150,7 +150,7 @@
      pause&
      (run& (add& S)))
    (define r
-     (start
+     (prime
       (process
        (signal ([S 0 #:gather +])
          (par&
@@ -158,15 +158,15 @@
           (await&
            S
            [(? (lambda (x) (> x 3))) (set! res #t)]))))))
-   (react r)
+   (react! r)
    (check-false res)
-   (react r)
+   (react! r)
    (check-false res)
-   (react r)
+   (react! r)
    (check-false res)
-   (react r)
+   (react! r)
    (check-false res)
-   (react r)
+   (react! r)
    (check-true res))
 
 
@@ -181,12 +181,12 @@
        #:unless act)
       (begin (emit& act) pause&           pause& (emit& act))
       (begin             pause& (emit& S) pause& (emit& S))))
-   (define r (start (await-when)))
-   (react r)
+   (define r (prime (await-when)))
+   (react! r)
    (check-false seen)
-   (react r)
+   (react! r)
    (check-false seen)
-   (react r)
+   (react! r)
    (check-true seen))
   (test-begin
    (define-signal A)
@@ -197,12 +197,12 @@
      (par& (await& #:immediate A) (await& #:immediate B))
      (emit& O)
      halt&)
-   (define r (start ABRO))
-   (react r A)
+   (define r (prime ABRO))
+   (react! r A)
    (check-false (last? O))
-   (react r B)
+   (react! r B)
    (check-true (last? O))
-   (react r R)
+   (react! r R)
    (check-false (last? O)))
   (test-begin
    (define-signal A)
@@ -215,12 +215,12 @@
       (emit& O)
       halt&
       #:after R))
-   (define r (start ABRO))
-   (react r A)
+   (define r (prime ABRO))
+   (react! r A)
    (check-false (last? O))
-   (react r B)
+   (react! r B)
    (check-true (last? O))
-   (react r R)
+   (react! r R)
    (check-false (last? O)))
   (test-begin
    (define-signal A)
@@ -234,22 +234,22 @@
        (emit& O)
        halt&
        #:after R)))
-   (define r (start ABRO))
-   (react r A)
+   (define r (prime ABRO))
+   (react! r A)
    (check-false (last? O))
-   (react r B)
+   (react! r B)
    (check-true (last? O))
-   (react r R)
+   (react! r R)
    (check-false (last? O))
-   (react r A B)
+   (react! r A B)
    (check-true (last? O))
-   (react r A B)
+   (react! r A B)
    (check-false (last? O))
-   (react r R A B)
+   (react! r R A B)
    (check-false (last? O))
-   (react r)
+   (react! r)
    (check-false (last? O))
-   (react r A B)
+   (react! r A B)
    (check-true (last? O)))
   (test-begin
    (define-signal S)
@@ -258,8 +258,8 @@
      (suspend&
       (emit& O)
       #:unless S))
-   (define r (start I/O))
-   (react r)
+   (define r (prime I/O))
+   (react! r)
    (check-false (last? O)))
   (test-begin
    (define-signal S)
@@ -268,8 +268,8 @@
      (suspend&
       (emit& O)
       #:unless S))
-   (define r (start I/O))
-   (react r S)
+   (define r (prime I/O))
+   (react! r S)
    (check-true (last? O)))
   (test-begin
    (define-signal S1)
@@ -281,14 +281,14 @@
        (emit& O)
        #:unless S2)
       #:unless S1))
-   (define r (start I/O))
-   (react r)
+   (define r (prime I/O))
+   (react! r)
    (check-false (last? O))
-   (react r S1)
+   (react! r S1)
    (check-false (last? O))
-   (react r S2)
+   (react! r S2)
    (check-false (last? O))
-   (react r S1 S2)
+   (react! r S1 S2)
    (check-true (last? O)))
   (define-process (suspend-loop O Ss)
     (let loop ([i Ss])
@@ -302,29 +302,29 @@
    (define-signal O)
    (define-signal S1)
    (define-signal S2)
-   (define r (start (suspend-loop O (list S1 S2))))
-   (react r S1)
+   (define r (prime (suspend-loop O (list S1 S2))))
+   (react! r S1)
    (check-false (last? O))
-   (react r S2)
+   (react! r S2)
    (check-false (last? O))
-   (react r S1 S2)
+   (react! r S1 S2)
    (check-true (last? O)))
   (test-begin
    (define-signal O)
    (define-signal S1)
    (define-signal S2)
    (define-signal S3)
-   (define r (start (suspend-loop O (list S1 S2 S3))))
-   (react r S1 S2)
+   (define r (prime (suspend-loop O (list S1 S2 S3))))
+   (react! r S1 S2)
    (check-false (last? O))
-   (react r S1 S2)
+   (react! r S1 S2)
    (check-false (last? O))
-   (react r S1 S2)
+   (react! r S1 S2)
    (check-false (last? O))
-   (react r S3)
+   (react! r S3)
    (check-false (last? O))
-   (react r S3)
+   (react! r S3)
    (check-false (last? O))
-   (react r S1 S2 S3)
+   (react! r S1 S2 S3)
    (check-true (last? O))))
             
