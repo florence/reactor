@@ -13,8 +13,13 @@ change without warning.
  Create a new reactor with a single thread.
 }
 
-@defproc[(react [r reactor?]) any]{
- Run one reaction in the reactor.
+@defproc[(react [r reactor?]
+                [start-signals (or/c pure-signal? (list/c value-signal? any/c))] ...)
+         any]{
+
+ Run one reaction in the reactor. The reactions begins by
+ emitting the given signals with the given value.
+
 }
 
 @section{Creating Processes}
