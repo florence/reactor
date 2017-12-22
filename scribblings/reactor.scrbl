@@ -11,7 +11,7 @@ change without warning.
 @section{Running Programs}
 @defproc[(prime [proc process?]) reactor?]{
                                            
- Create a new reactor with primed the one thread.
+ Create a new reactor, primed the one thread.
  
 }
 
@@ -24,8 +24,8 @@ change without warning.
 
  @bold{Warning:} @racket[react!] is not thread safe. Two
  reactions in @racket[r] should not take place concurrently,
- and @tech{signals} used by @racket[r] should not be observed out
- side of @racket[r] during a reaction.
+ and @tech{signals} used by @racket[r] should not be observed
+ outside of @racket[r] during a reaction.
 
 }
 
@@ -226,6 +226,6 @@ ending in a @racket[&] may only be used inside of a
 
 @defproc[(process? [p any]) boolean?]{
 
- Is @racket[p] a runnable process?
+ Is @racket[p] a process?
 
 }
