@@ -1,15 +1,18 @@
 #lang racket
 (provide
- ;; data
- signal?
- pure-signal?
- value-signal?
- reactor?
- process?
- reactor-done?
- ;; running
- start
- react
+ (contract-out
+  ;; data
+  [signal? predicate/c ]
+  [pure-signal? predicate/c]
+  [value-signal? predicate/c]
+  [reactor? predicate/c]
+  [process? predicate/c]
+  [reactor-done? (-> reactor? any)]
+  [last (-> value-signal? any/c)]
+  [last? (-> signal? any)]
+  ;; running
+  [start (-> process? reactor?)]
+  [react (-> reactor? (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
  ;; process creation
  (rename-out [process* process])
  define-process
@@ -22,8 +25,6 @@
  emit&
  pause&
  await&
- last
- last?
  suspend&
  abort&
  loop&
