@@ -15,9 +15,11 @@
          start
          react
          reactor-done?
-         %%)
+         %%
+         extend-with-parameterization)
 (require "data.rkt"
          (for-syntax syntax/parse))
+(module+ test (require rackunit))
 
 
 
@@ -30,6 +32,25 @@
   (syntax-parser
     [(_ k:id body ...)
      #'(call/cc (lambda (k) body ...) reactive-tag)]))
+
+;; (any ... -> any) -> (any ... -> any)
+;; gives a function like f, but that sees
+;; the current parameterization.
+(define (extend-with-parameterization f)
+  (define pz (current-parameterization))
+  (lambda a
+    (call-with-parameterization
+     pz
+     (lambda () (apply f a)))))
+
+(module+ test
+  (define p (make-parameter #f))
+  (define f
+    (parameterize ([p #t])
+      (extend-with-parameterization
+       (lambda () (p)))))
+  (check-true (f)))
+  
 
 ;; Process -> Reactor
 (define (start proc)
@@ -95,7 +116,7 @@
       (for/fold ([threads empty] [children empty])
                 ([ct (in-list cts)])
         (define-values (t ct2) (get-next-active/filter! ct))
-        (values (append t threads) (if ct2 (cons ct2 children) children))))
+        (values (append t threads) (cons ct children) #;(if ct2 (cons ct2 children) children))))
     (match ct
       [(top children threads)
        (define-values (t child) (rec children))
@@ -276,8 +297,8 @@
       (hash-set! blocked
                  S
                  (cons (make-blocked ct
-                                     (lambda () (p) (k (void)))
-                                     (lambda () (q) (k (void))))
+                                     (extend-with-parameterization (lambda () (p) (k (void))))
+                                     (extend-with-parameterization (lambda () (q) (k (void)))))
                        (hash-ref blocked S empty)))
       (switch!))]))
 
@@ -291,14 +312,15 @@
   ;; a thread is dynamically allocated it can
   ;; reuse/join the outer thread group
   (%% k
-     (for/list ([t (in-list threads)])
-       (activate!
-        (lambda ()
-          (t)
-          (set! counter (- counter 1))
-          (when (zero? counter)
-            (activate! (lambda () (k (void)))))
-          (switch!))))
+      (for ([t (in-list threads)])
+        (activate!
+         (extend-with-parameterization
+          (lambda ()
+            (t)
+            (set! counter (- counter 1))
+            (when (zero? counter)
+              (activate! (lambda () (k (void)))))
+            (switch!)))))
      (switch!)))
 
 (define emitf

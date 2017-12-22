@@ -75,7 +75,58 @@
    (check-false found)
    (react g1)
    (check-true found))
+  (test-begin
+   (define-signal O1)
+   (define-signal O2)
+   (define r
+     (start
+      (process
+       (par& (emit& O1) (emit& O2)))))
+   (react r)
+   (check-true (last? O1))
+   (check-true (last? O2)))
+  (test-begin
+   (define-signal O1)
+   (define-signal O2)
+   (define r
+     (start
+      (process
+       (par& (begin pause& (emit& O1))
+             (begin pause& (emit& O2))))))
+   (react r)
+   (check-false (last? O1))
+   (check-false (last? O2))
+   (react r)
+   (check-true (last? O1))
+   (check-true (last? O2)))
+  (test-begin
+   (define-signal I)
+   (define-signal O)
+   (define r
+     (start
+      (process
+       (await& I)
+       (emit& O))))
+   (react r)
+   (check-false (last? O))
+   (react r I)
+   (check-true (last? O)))
 
+  (test-begin
+   (define res #f)
+   (define r
+     (start
+      (process
+       (define-signal S 0 #:gather +)
+       (par&
+        (emit& S 1)
+        (await&
+         S
+         [n (set! res n)])))))
+   (react r)
+   (check-false res)
+   (react r)
+   (check-equal? res 1))
   (test-begin
    (define res #f)
    (define r
@@ -238,4 +289,42 @@
    (react r S2)
    (check-false (last? O))
    (react r S1 S2)
+   (check-true (last? O)))
+  (define-process (suspend-loop O Ss)
+    (let loop ([i Ss])
+      (cond
+        [(empty? i) (emit& O)]
+        [else
+         (suspend&
+          (loop (rest i))
+          #:unless (first i))])))
+  (test-begin
+   (define-signal O)
+   (define-signal S1)
+   (define-signal S2)
+   (define r (start (suspend-loop O (list S1 S2))))
+   (react r S1)
+   (check-false (last? O))
+   (react r S2)
+   (check-false (last? O))
+   (react r S1 S2)
+   (check-true (last? O)))
+  (test-begin
+   (define-signal O)
+   (define-signal S1)
+   (define-signal S2)
+   (define-signal S3)
+   (define r (start (suspend-loop O (list S1 S2 S3))))
+   (react r S1 S2)
+   (check-false (last? O))
+   (react r S1 S2)
+   (check-false (last? O))
+   (react r S1 S2)
+   (check-false (last? O))
+   (react r S3)
+   (check-false (last? O))
+   (react r S3)
+   (check-false (last? O))
+   (react r S1 S2 S3)
    (check-true (last? O))))
+            
