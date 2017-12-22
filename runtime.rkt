@@ -51,7 +51,8 @@
         [a (emit-pure a)])))
   (call-with-continuation-prompt
    (lambda () (sched! grp))
-   reactive-tag))
+   reactive-tag)
+  (cleanup! grp))
 
 ;; (-> Any) -> Reactor
 ;; make a reactor containing only the given thread, which is active
@@ -60,64 +61,76 @@
   (reactor void (list (proc top-tree)) (make-hasheq) top-tree (make-hasheq) empty))
 
 ;; Reactor -> Any
-;; main scheduler loop. Should be called with a `reactive-tag`
+;; main scheduler loop. Should be called within a `reactive-tag`.
 (define (sched! g)
+  (unless (reactor-done? g)
+    (match-define (reactor os active blocked ct susps signals) g)
+    (define next (first active))
+    (set-reactor-active! g (rest active))
+    (%%
+     k
+     (set-reactor-os! g (lambda () (k (void))))
+     (parameterize ([current-reactor g])
+       (next)))
+    (sched! g)))
+
+;; reactor -> Void
+;; should not be called within a `reactive-tag`.
+(define (cleanup! g)
   (match-define (reactor os active blocked ct susps signals) g)
-  (cond
-    [(reactor-done? g)
-     (for* ([(_ procs) (in-hash blocked)]
-            [b (in-list procs)])
-       (run-next! (blocked-ct b) (blocked-absent b)))
-     (define active (get-next-active! ct))
-     (define new-susps
-       (let ([new-susps (make-hasheq)])
-         (add-suspends! new-susps (get-top-level-susps ct))
-         new-susps))
-     (set-reactor-os! g void)
-     (set-reactor-active! g active)
-     (set-reactor-blocked! g (make-hasheq))
-     (set-reactor-signals! g empty)
-     (set-reactor-susps! g new-susps)
-     (for ([S (in-list (remove-duplicates signals eq?))])
-       (reset-signal! g S))]
-    [else
-     (define next (first active))
-     (set-reactor-active! g (rest active))
-     (%%
-      k
-      (set-reactor-os! g (lambda () (k (void))))
-      (parameterize ([current-reactor g])
-        (next)))
-     (sched! g)]))
+  (for* ([(_ procs) (in-hash blocked)]
+         [b (in-list procs)])
+    (run-next! (blocked-ct b) (blocked-absent b)))
+  (define new-susps
+    (let ([new-susps (make-hasheq)])
+      (add-suspends! new-susps (get-top-level-susps ct))
+      new-susps))
+  
+
+  (reset-reactor-signals! g)
+  
+  (define new-active (get-next-active! ct))
+  
+  (set-reactor-os! g void)
+  (set-reactor-active! g new-active)
+  (set-reactor-blocked! g (make-hasheq))
+  
+  (set-reactor-susps! g new-susps))
 
 
 
 ;; ControlTree -> (listof RThread)
 ;; get any threads that should start active in the next instant
-;; EFFECT: removes them from the control tree
+;; EFFECT: removes them from the control tree, cleans up dead children.
+;; INVARIANT: Must be called during an instant, after signals are reset for the next instant
 (define (get-next-active! ct)
   (define (get-next-active/filter! ct)
     (define (rec cts)
       (for/fold ([threads empty] [children empty])
                 ([ct (in-list cts)])
         (define-values (t ct2) (get-next-active/filter! ct))
-        (values (append t threads) (cons ct children) #;(if ct2 (cons ct2 children) children))))
+        (values (append t threads) (if ct2 (cons ct2 children) children))))
     (match ct
       [(top children threads)
        (define-values (t child) (rec children))
        (set-control-tree-next! ct empty)
        (set-control-tree-children! ct child)
        (values (append threads t) ct)]
-      [(preempt-when children threads signal k)
+      [(preempt-when (list) (list) signal g)
+       (values empty #f)]
+      [(preempt-when children threads signal g)
        (define-values (t child) (rec children))
        (set-control-tree-next! ct empty)
        (set-control-tree-children! ct child)
-       (if (signal-status signal)
-           (values (cons k t) #f)
-           (values (append threads t)
-                   (if (and (empty? threads) (empty? child)) #f ct)))]
+       (cond
+         [(and (last? signal) (g))
+          =>
+          (lambda (k) (values (cons k t) #f))]
+         [else
+          (values (append threads t)
+                  (if (and (empty? threads) (empty? child)) #f ct))])]
       [(suspend-unless children threads signal)
-       #:when (signal-status signal)
+       #:when (last? signal)
        (define-values (t child) (rec children))
        (set-control-tree-next! ct (append t threads))
        (set-control-tree-children! ct child)
@@ -146,6 +159,14 @@
      (append
       (control-tree-next ct)
       (append-map get-top-level-threads (control-tree-children ct)))]))
+
+;; Reactor -> Void
+;; reset the signal buffer for the next instant
+(define (reset-reactor-signals! g)
+  (define signals (reactor-signals g))
+  (set-reactor-signals! g empty)
+  (for ([S (in-list (remove-duplicates signals eq?))])
+    (reset-signal! g S)))
 
 ;; Reactor Signal -> Void
 ;; cleanup signal for next instant
@@ -272,6 +293,7 @@
 
 ;; (hasheq-of Signal SuspendUnless) (Listof SuspendUnless) -> Void
 ;; Effect: begin waiting on (activate) these suspends, given the suspension map
+;; Invariant: Must be called during an instant, before signal cleanup.
 (define (add-suspends! susps new-sp)
   (for ([sp (in-list new-sp)])
     (add-suspend! susps sp)))
@@ -305,23 +327,26 @@
       (switch!))]))
 
 
-;; ControlTree (Listof RThread) -> Any
+;; ControlTree (Listof RThread) -> (Listof Any)
 ;; run all threads, blocking the current thread until all have completed
 (define (parf ct threads)
   (define counter (length threads))
+  (define cells (for/list ([t (in-list threads)]) (box #f)))
   ;; TODO optimization mentioned in RML paper:
   ;; pass boxed counter around, so that when
   ;; a thread is dynamically allocated it can
   ;; reuse/join the outer thread group
   (%% k
-      (for ([t (in-list threads)])
+      (for ([t (in-list threads)]
+            [cell (in-list cells)])
         (activate!
          (continue-at
           t
           (lambda (x)
             (set! counter (- counter 1))
+            (set-box! cell x)
             (when (zero? counter)
-              (activate! (lambda () (k x))))
+              (activate! (lambda () (k (map unbox cells)))))
             (switch!)))))
      (switch!)))
 
@@ -332,10 +357,10 @@
 
 
 ;; (-> Any) (Any -> Nothing) -> (-> Nothing)
-;; return a function that runs f, then jumps to k with the value `(void)`,
+;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k)
-  (extend-with-parameterization (lambda () (f) (k (void)))))
+  (extend-with-parameterization (lambda () (k (f)))))
 
 
 ;; (any ... -> any) -> (any ... -> any)

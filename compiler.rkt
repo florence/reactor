@@ -90,7 +90,7 @@
     [(suspend& e:expr ... #:unless S)
      #`(%% k
            (let ([nt (make-suspend-unless empty empty S)])
-             (extend-control
+             (with-extended-control
               (lambda ()
                 (run-next! nt (continue-at (lambda () e ...) k))
                 (activate-suspends! nt)
@@ -98,16 +98,30 @@
               nt)))]))
 (define-syntax/in-process abort&
   (syntax-parser
-    [(suspend& e:expr ... #:after S)
+    [(abort& e:expr ... #:after S)
      #'(%%
         k
-        (extend-control
+        (with-extended-control
          (lambda () e ...)
-         (make-preempt-when empty empty S (lambda () (k (void))))))]))
+         (make-preempt-when
+          empty empty S
+          (lambda () (lambda () (k (void)))))))]
+    [(abort& e:expr ... #:after S [pattern body ...] ...)
+     #'(%%
+        k
+        (with-extended-control
+         (lambda () e ...)
+         (make-preempt-when
+          empty empty S
+          (extend-with-parameterization
+           (lambda ()
+             (match (last S)
+               [pattern (lambda () (k (begin body ...)))] ...
+               [_ #f]))))))]))
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
-(define (extend-control body new-tree)
+(define (with-extended-control body new-tree)
   (add-new-control-tree! (current-control-tree) new-tree)
   (parameterize ([current-control-tree new-tree])
     (body)))
@@ -146,7 +160,7 @@
   (present& S (void) (run& (await-immediate S))))
 
 (define-process (await S)
-  (begin pause& (run& (await-immediate S))))
+  (begin (run& (await-immediate S)) pause&))
 
 ;; ValueSignal (Any -> Any) -> Process
 ;; Await a value for the signal S, and give it to `f`

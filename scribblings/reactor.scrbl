@@ -58,15 +58,18 @@ ending in a @racket[&] may only be used inside of a
 
 @defform[(run& proc)]{
                       
- Start the given process within the
- current one, blocking the thread until it completes. @valid
+ Start the given process within the current one, blocking
+ the thread until it completes. Evaluates to the result
+ of the process. @valid
  
 }
 
 @defform[(par& e ...)]{
 
- Runs each @racket[e] independently in the current process. This blocks
- the current process until each new thread has finished. @valid
+ Runs each @racket[e] independently in the current process.
+ This blocks the current process until each new thread has
+ finished. Evaluates to a list containing the result of each
+ expression. @valid
                        
 }
 
@@ -79,12 +82,15 @@ ending in a @racket[&] may only be used inside of a
 }
 
 @defidform[paused&]{
-  Block the current thread until the next reaction. @valid
+
+ Block the current thread until the next reaction. evaluates
+ to @racket[(void)] in the next reaction. @valid
+
 }
 
 @defidform[halt&]{
 
- Block this thread forever. @valid
+ Blocks this thread forever. @valid
                   
 }
 
@@ -122,23 +128,26 @@ ending in a @racket[&] may only be used inside of a
 
 @defform[(present& S then else)]{
 
- Executes @racket[then] if @racket[S] is emitted in this
- instant. Executes @racket[else] in the next instant
+ Evaluates to @racket[then] if @racket[S] is emitted in this
+ instant. Evaluates to @racket[else] in the next instant
  otherwise.
                                  
 }
 
-@defform*[((await& #:immediate S)
-           (await& S [pattern body ...] ...))]{
+@defform*[((await& maybe-immediate S)
+           (await& S [pattern body ...] ...+))
+          #:grammar ([maybe-immediate (code:line) #:immediate])]{
 
  Awaits the emission of the signal @racket[S]. In the
  @racket[#:immediate] variant, the unblocks the same instant
- @racket[S] is emitted.
+ @racket[S] is emitted, and evaluates to @racket[(void)].
+ Otherwise it terminates the following instant.
                                              
- In the second variant @racket[S] must be a value carrying
- signal. In this case the value is matched against the given patterns
- in the next instant. The body of the first match is run. If none match
- the form continues await the signal.
+ If pattern clauses are provided, @racket[S] must be a value carrying
+ signal. In this case the value is matched against the given
+ patterns in the reaction after @racket[S] is emitted. It evaluates to the
+ @racket[body] of the first match. If none match the form
+ continues to await the signal.
 
  @valid
  
@@ -160,16 +169,26 @@ ending in a @racket[&] may only be used inside of a
 
 @defform[(suspend& e ... #:unless S)]{
                                       
- Runs the body of the suspend unless @racket[S] any instant
+ Runs @racket[e] unless @racket[S] any instant
  where @racket[S] is emitted. Suspends the body and blocks
- otherwise. @valid
+ otherwise. Evaluates to its the result of body. @valid
  
 }
 
-@defform[(abort& e ... #:after S)]{
+@defform[(abort& e ... #:after S [pattern body ...] ...)]{
 
- Runs the body until @racket[S] is emitted. The body is then
- aborted in the next instant. @valid
+ Runs the body until @racket[S] is emitted. If no pattern clauses are provided, the body is
+ aborted in the next instant, and the form evaluates to @racket[(void)].
+
+ If patterns are provided, they are matched against the
+ value carried by @racket[S]. The form evaluates to the body
+ of the first clauses that matches. If non match the
+ execution of @racket[e] continues.
+
+ If @racket[e] completes before @racket[S] is emitted and
+ the body is aborted, the form evaluates to the result of @racket[e].
+
+ @valid
 
 }
 
