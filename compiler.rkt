@@ -91,29 +91,23 @@
      #`(%% k
            (let ([nt (make-suspend-unless empty empty S)])
              (extend-control
-              (let ([f (lambda () e ...)])
-                (lambda ()
-                  (cond
-                    [(signal-status S) (f)]
-                    [else
-                     (run-next!
-                      nt
-                      (extend-with-parameterization
-                       (lambda () (f) (k (void)))))
-                     (set-reactor-susps!
-                      (current-reactor)
-                      (cons nt (reactor-susps (current-reactor))))
-                     (switch!)])))
-              S nt)))]))
+              (lambda ()
+                (run-next! nt (continue-at (lambda () e ...) k))
+                (activate-suspends! nt)
+                (switch!))
+              nt)))]))
 (define-syntax/in-process abort&
   (syntax-parser
     [(suspend& e:expr ... #:after S)
-     #'(%% k
-           (extend-control (lambda () e ...)
-                           S
-                           (make-preempt-when empty empty S (lambda () (k (void))))))]))
+     #'(%%
+        k
+        (extend-control
+         (lambda () e ...)
+         (make-preempt-when empty empty S (lambda () (k (void))))))]))
 
-(define (extend-control body S new-tree)
+;; (-> any) ControlTree
+;; run `body`with the control tree extended by `new-tree`
+(define (extend-control body new-tree)
   (add-new-control-tree! (current-control-tree) new-tree)
   (parameterize ([current-control-tree new-tree])
     (body)))

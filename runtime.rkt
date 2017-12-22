@@ -16,7 +16,9 @@
          react
          reactor-done?
          %%
-         extend-with-parameterization)
+         activate-suspends!
+         extend-with-parameterization
+         continue-at)
 (require "data.rkt"
          (for-syntax syntax/parse))
 (module+ test (require rackunit))
@@ -33,23 +35,6 @@
     [(_ k:id body ...)
      #'(call/cc (lambda (k) body ...) reactive-tag)]))
 
-;; (any ... -> any) -> (any ... -> any)
-;; gives a function like f, but that sees
-;; the current parameterization.
-(define (extend-with-parameterization f)
-  (define pz (current-parameterization))
-  (lambda a
-    (call-with-parameterization
-     pz
-     (lambda () (apply f a)))))
-
-(module+ test
-  (define p (make-parameter #f))
-  (define f
-    (parameterize ([p #t])
-      (extend-with-parameterization
-       (lambda () (p)))))
-  (check-true (f)))
   
 
 ;; Process -> Reactor
@@ -201,6 +186,7 @@
   (set-reactor-active!
    (current-reactor)
    (cons thrd (reactor-active (current-reactor)))))
+
 ;; ControlTree RThread -> Void
 ;; register this thread for the next instant
 (define (run-next! ct thrd)
@@ -208,6 +194,8 @@
    ct
    (cons thrd (control-tree-next ct))))
 
+;; ControlTree ControlTree -> Void
+;; Effect: Add `nt` to the children of `cct`
 (define (add-new-control-tree! cct nt)
   (set-control-tree-children!
    cct
@@ -248,6 +236,8 @@
   (unblock-threads! S)
   (unblock-suspends! S))
 
+;; Signal -> Void
+;; Effect: unblock any threads waiting on this signal
 (define (unblock-threads! S)
   (define grp (current-reactor))
   (define blocked (reactor-blocked grp))
@@ -258,26 +248,40 @@
    (append (reactor-active grp)
            (map blocked-present unblocked))))
 
+;; Signal -> Void
+;; Effect: Unblock all suspensions waiting for this signal.
 (define (unblock-suspends! S)
   (define susps (reactor-susps (current-reactor)))
   (define trees (hash-ref susps S empty))
   (hash-remove! susps S)
   (for ([sp (in-list trees)])
-    (for-each activate! (control-tree-next sp))
-    (set-control-tree-next! sp empty)
-    (define new-sp (append-map get-top-level-susps (control-tree-children sp)))
-    (define new-threads (append-map get-top-level-threads (control-tree-children sp)))
-    (for-each activate! new-threads)
-    (add-suspends! susps new-sp)))
-
-(define (add-suspends! susps new-sp)
-  (for ([sp (in-list new-sp)])
-    (define S (suspend-unless-signal sp))
-    (hash-set! susps
-               S
-               (cons sp (hash-ref susps S empty)))))
+    (activate-suspends! sp)))
 
 ;; ControlTree -> Void
+;; awaken or activate all suspends in this tree
+(define (activate-suspends! sp)
+  (cond
+    [(or (not (suspend-unless? sp))
+         (signal-status (suspend-unless-signal sp)))
+     (for-each activate! (control-tree-next sp))
+     (set-control-tree-next! sp empty)
+     (for-each activate-suspends! (control-tree-children sp))]
+    [else
+     (add-suspend! (reactor-susps (current-reactor)) sp)]))
+  
+
+;; (hasheq-of Signal SuspendUnless) (Listof SuspendUnless) -> Void
+;; Effect: begin waiting on (activate) these suspends, given the suspension map
+(define (add-suspends! susps new-sp)
+  (for ([sp (in-list new-sp)])
+    (add-suspend! susps sp)))
+(define (add-suspend! susps sp)
+  (define S (suspend-unless-signal sp))
+  (hash-set! susps
+             S
+             (cons sp (hash-ref susps S empty))))
+
+;; ControlTree -> Any
 ;; suspend the current thread until the next instant
 (define (pausef ct)
   (%%
@@ -296,9 +300,7 @@
       k
       (hash-set! blocked
                  S
-                 (cons (make-blocked ct
-                                     (extend-with-parameterization (lambda () (p) (k (void))))
-                                     (extend-with-parameterization (lambda () (q) (k (void)))))
+                 (cons (make-blocked ct (continue-at p k) (continue-at q k))
                        (hash-ref blocked S empty)))
       (switch!))]))
 
@@ -314,12 +316,12 @@
   (%% k
       (for ([t (in-list threads)])
         (activate!
-         (extend-with-parameterization
-          (lambda ()
-            (t)
+         (continue-at
+          t
+          (lambda (x)
             (set! counter (- counter 1))
             (when (zero? counter)
-              (activate! (lambda () (k (void)))))
+              (activate! (lambda () (k x))))
             (switch!)))))
      (switch!)))
 
@@ -327,3 +329,29 @@
   (case-lambda
     [(S) (emit-pure S)]
     [(S v) (emit-value S v)]))
+
+
+;; (-> Any) (Any -> Nothing) -> (-> Nothing)
+;; return a function that runs f, then jumps to k with the value `(void)`,
+;; all under the current parameterization
+(define (continue-at f k)
+  (extend-with-parameterization (lambda () (f) (k (void)))))
+
+
+;; (any ... -> any) -> (any ... -> any)
+;; gives a function like f, but that sees
+;; the current parameterization.
+(define (extend-with-parameterization f)
+  (define pz (current-parameterization))
+  (lambda a
+    (call-with-parameterization
+     pz
+     (lambda () (apply f a)))))
+
+(module+ test
+  (define p (make-parameter #f))
+  (define f
+    (parameterize ([p #t])
+      (extend-with-parameterization
+       (lambda () (p)))))
+  (check-true (f)))
