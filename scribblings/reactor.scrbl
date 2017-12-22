@@ -15,7 +15,7 @@ change without warning.
  
 }
 
-@defproc[(react! [r reactor?]
+@defproc[(react! [r (and/c reactor? reactor-safe?)]
                  [start-signals (or/c pure-signal? (list/c value-signal? any/c))] ...)
          any]{
 
@@ -237,4 +237,12 @@ ending in a @racket[&] may only be used inside of a
 
  Is @racket[p] a process?
 
+}
+
+@defproc[(reactor-safe? [r reactor?]) boolean?]{
+
+ Can `react!` be called directly on this reactor? This
+ returns false if either the reactor is under the control of
+ an ignition thread, or raised an exception during execution.
+                                                
 }

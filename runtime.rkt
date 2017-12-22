@@ -65,7 +65,7 @@
 ;; main scheduler loop. Should be called within a `reactive-tag`.
 (define (sched! g)
   (unless (reactor-suspended? g)
-    (match-define (reactor os active blocked ct susps signals) g)
+    (match-define (reactor os active blocked ct susps signals safe?) g)
     (define next (first active))
     (set-reactor-active! g (rest active))
     (%%
@@ -78,7 +78,7 @@
 ;; reactor -> Void
 ;; should not be called within a `reactive-tag`.
 (define (cleanup! g)
-  (match-define (reactor os active blocked ct susps signals) g)
+  (match-define (reactor os active blocked ct susps signals safe?) g)
   (for* ([(_ procs) (in-hash blocked)]
          [b (in-list procs)])
     (run-next! (blocked-ct b) (blocked-absent b)))

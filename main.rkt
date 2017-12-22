@@ -7,13 +7,14 @@
   [value-signal? predicate/c]
   [reactor? predicate/c]
   [process? predicate/c]
-  [reactor-done? (-> reactor? any)]
-  [reactor-suspended? (-> reactor? any)]
+  [reactor-done? (-> reactor? any/c)]
+  [reactor-suspended? (-> reactor? any/c)]
   [last (-> value-signal? any/c)]
   [last? (-> signal? any)]
+  [reactor-safe? (-> reactor? any/c)]
   ;; running
   [prime (-> process? reactor?)]
-  [react! (-> reactor? (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
+  [react! (-> (and/c reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
  ;; process creation
  (rename-out [process* process])
  define-process

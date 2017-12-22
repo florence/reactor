@@ -2,8 +2,8 @@
 (provide (all-defined-out))
 
 ;; A Reactor is a
-;;  (reactor RThread (Listof Thread) (hasheqof Signal Blocked) ControlTree (hasheqof S SuspendUnless) (Listof Signal))
-(struct reactor (os active blocked ct susps signals) #:mutable #:authentic)
+;;  (reactor RThread (Listof Thread) (hasheqof Signal Blocked) ControlTree (hasheqof S SuspendUnless) (Listof Signal) boolean)
+(struct reactor (os active blocked ct susps signals safe?) #:mutable #:authentic)
 ;; `os` is the continuation for the OS loop
 ;; `active` are a list of runnable threads
 ;; `blocked` maps signals to blocked thread pairs
@@ -11,6 +11,7 @@
 ;; `susps` is active suspensions, keys on their blocking signal
 ;; `signals` is a list of all signals in the program, that have been emitted
 ;;   they may be reset inbetween instants
+;; `safe?` is true if the reactor may be controlled from outside of an ignition thread
 
 ;; a RThread is a (-> Any), and is the continuation of a thread
 
