@@ -196,6 +196,46 @@
    (check-false (last? O))
    (react r R A B)
    (check-false (last? O))
+   (react r)
+   (check-false (last? O))
    (react r A B)
-   (check-true (last? O))
-   ))
+   (check-true (last? O)))
+  (test-begin
+   (define-signal S)
+   (define-signal O)
+   (define-process I/O
+     (suspend&
+      (emit& O)
+      #:unless S))
+   (define r (start I/O))
+   (react r)
+   (check-false (last? O)))
+  (test-begin
+   (define-signal S)
+   (define-signal O)
+   (define-process I/O
+     (suspend&
+      (emit& O)
+      #:unless S))
+   (define r (start I/O))
+   (react r S)
+   (check-true (last? O)))
+  (test-begin
+   (define-signal S1)
+   (define-signal S2)
+   (define-signal O)
+   (define-process I/O
+     (suspend&
+      (suspend&
+       (emit& O)
+       #:unless S2)
+      #:unless S1))
+   (define r (start I/O))
+   (react r)
+   (check-false (last? O))
+   (react r S1)
+   (check-false (last? O))
+   (react r S2)
+   (check-false (last? O))
+   (react r S1 S2)
+   (check-true (last? O))))

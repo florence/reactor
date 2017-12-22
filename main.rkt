@@ -102,7 +102,7 @@
 ;;   (make-suspend-unless (listof ControlTree) Signal (Listof RThread))
 ;;   (make-preempt-when (listof ControlTree) Signal (Listof RThread))
 
-(struct control-tree (children next) #:mutable)
+(struct control-tree (children next) #:mutable #:transparent)
 
 (struct top control-tree () #:mutable
   #:constructor-name make-top)
@@ -200,19 +200,32 @@
 (define-syntax suspend&
   (syntax-parser
     [(suspend& e:expr ... #:unless S)
-     #'(extend-control (begin e ...) S (make-suspend-unless empty empty S))]))
+     #`(%% k
+           (let ([nt (make-suspend-unless empty empty S)])
+             (extend-control
+              (let ([f (lambda () e ...)])
+                (if (signal-status S)
+                    (f)
+                    (begin
+                      (run-next! nt #,(syntax/loc this-syntax (lambda () (f) (k (void)))))
+                      (set-reactor-susps!
+                       (current-reactor)
+                       (cons nt (reactor-susps (current-reactor))))
+                      (switch!))))
+              S nt)))]))
 (define-syntax abort&
   (syntax-parser
     [(suspend& e:expr ... #:after S)
-     #'(%% k (extend-control (begin e ...) S (make-preempt-when empty empty S (lambda () (k (void))))))]))
+     #'(%% k
+           (extend-control (begin e ...)
+                           S
+                           (make-preempt-when empty empty S (lambda () (k (void))))))]))
 
 (define-syntax extend-control
   (syntax-parser
     [(_ body S controller)
      #'(let ([new-tree controller])
-         (set-control-tree-children!
-          current-control-tree
-          (cons new-tree (control-tree-children current-control-tree)))
+         (add-new-control-tree! current-control-tree new-tree)
          (syntax-parameterize ([current-control-tree
                                 (make-rename-transformer #'new-tree)])
            body))]))
@@ -370,6 +383,8 @@
         (next)))
      (sched! g)]))
 
+
+
 ;; ControlTree -> (listof RThread)
 ;; get any threads that should start active in the next instant
 ;; EFFECT: removes them from the control tree
@@ -379,7 +394,7 @@
       (for/fold ([threads empty] [children empty])
                 ([ct (in-list cts)])
         (define-values (t ct2) (get-next-active/filter! ct))
-        (values (append t threads) (if ct2 (cons ct2 cts) cts))))
+        (values (append t threads) (if ct2 (cons ct2 children) children))))
     (match ct
       [(top children threads)
        (define-values (t child) (rec children))
@@ -393,14 +408,13 @@
        (if (signal-status signal)
            (values (cons k t) #f)
            (values (append threads t)
-                   (if (empty? child) #f ct)))]
-      ;; TODO should we traverse if the signal was present?
+                   (if (and (empty? threads) (empty? child)) #f ct)))]
       [(suspend-unless children threads signal)
        #:when (signal-status signal)
        (define-values (t child) (rec children))
        (set-control-tree-next! ct (append t threads))
        (set-control-tree-children! ct child)
-       (values empty (if (empty? child) #f ct))]
+       (values empty (if (and (empty? threads) (empty? child)) #f ct))]
       [(suspend-unless _ _ _) (values empty ct)]))
   ;; ---- IN ----
   (define-values (threads _) (get-next-active/filter! ct))
@@ -410,8 +424,7 @@
 ;; ControlTree -> (Listof SuspendUnless)
 (define (get-top-level-susps ct)
   (cond
-    [(and (suspend-unless? ct)
-          (not (signal-status (suspend-unless-signal ct))))
+    [(suspend-unless? ct)
      (list ct)]
     [else
      (append-map get-top-level-susps (control-tree-children ct))]))
@@ -472,6 +485,11 @@
   (set-control-tree-next!
    ct
    (cons thrd (control-tree-next ct))))
+
+(define (add-new-control-tree! cct nt)
+  (set-control-tree-children!
+   cct
+   (cons nt (control-tree-children cct))))
 
 ;;;;;; running
 
