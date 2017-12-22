@@ -218,9 +218,18 @@ ending in a @racket[&] may only be used inside of a
 
 }
 
+@defproc[(reactor-suspended? [r reactor?]) boolean?]{
+
+ Is @racket[r] completely suspended. That is, are there
+ threads queued to immediately run on the next reaction?
+
+}
+
 @defproc[(reactor-done? [r reactor?]) boolean?]{
 
- Is @racket[r] done. That is, are there no more remaining threads?
+ Is @racket[r] done. That is, are there threads queued to
+ immediately run on the next reaction and no suspensions
+ waiting blocked on a signal?
 
 }
 

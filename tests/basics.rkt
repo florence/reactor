@@ -13,14 +13,19 @@
   (test-begin
    (define r (prime (process halt&)))
    (check-false (reactor-done? r))
+   (check-false (reactor-suspended? r))
    (react! r)
    (check-false (reactor-done? r))
+   (check-true (reactor-suspended? r))
    (react! r)
    (check-false (reactor-done? r))
+   (check-true (reactor-suspended? r))
    (react! r)
    (check-false (reactor-done? r))
+   (check-true (reactor-suspended? r))
    (react! r)
-   (check-false (reactor-done? r)))
+   (check-false (reactor-done? r))
+   (check-true (reactor-suspended? r)))
   
   (test-begin
    (define done #f)

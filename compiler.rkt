@@ -150,7 +150,7 @@
 
 (define-syntax/in-process halt&
   (syntax-parser
-    [halt:id #'(loop& pause&)]))
+    [halt:id #'(signal* S (suspend& (void) #:unless S))]))
 
 
 

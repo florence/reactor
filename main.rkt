@@ -8,6 +8,7 @@
   [reactor? predicate/c]
   [process? predicate/c]
   [reactor-done? (-> reactor? any)]
+  [reactor-suspended? (-> reactor? any)]
   [last (-> value-signal? any/c)]
   [last? (-> signal? any)]
   ;; running

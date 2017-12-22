@@ -15,6 +15,7 @@
          prime
          react!
          reactor-done?
+         reactor-suspended?
          %%
          activate-suspends!
          extend-with-parameterization
@@ -63,7 +64,7 @@
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
 (define (sched! g)
-  (unless (reactor-done? g)
+  (unless (reactor-suspended? g)
     (match-define (reactor os active blocked ct susps signals) g)
     (define next (first active))
     (set-reactor-active! g (rest active))
@@ -187,8 +188,16 @@
   (unblock! S))
 
 ;; Reactor -> Boolean
-;; does this reactor have active threads?
-(define (reactor-done? g) (empty? (reactor-active g)))
+;; does this reactor have no active threads?
+(define (reactor-suspended? g)
+  (empty? (reactor-active g)))
+
+;; Reactor -> Boolean
+;; does this reactor have active threads or suspensions?
+(define (reactor-done? g)
+  (and
+   (empty? (reactor-active g))
+   (hash-empty? (reactor-susps g))))
 
 ;; RThread -> Void
 ;; register this threads as active
