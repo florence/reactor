@@ -169,5 +169,46 @@
    (check-false (last? O))
    (react! r)
    (check-true (last? O))
-   (check-equal? (last O) 2)))
+   (check-equal? (last O) 2))
+  (test-begin
+   (define-signal kill 0 #:gather +)
+   (define-signal O 0 #:gather +)
+   (define r
+     (prime
+      (process
+       (par& (emit& O (abort& halt& #:after kill [2 2]))
+             (emit& kill 1)))))
+   (react! r)
+   (check-false (last? O))
+   (react! r)
+   (check-false (last? O))
+   (react! r (list kill 2))
+   (check-false (last? O))
+   (react! r)
+   (check-true (last? O))
+   (check-equal? (last O) 2))
+  (test-begin
+   (define-signal run)
+   (define-signal kill)
+   (define-signal O 0 #:gather +)
+   (define r
+     (prime
+      (process
+       (emit&
+        O
+        (abort&
+         (suspend&
+          (emit& O 1)
+          2
+          #:unless run)
+         #:after kill)))))
+   (react! r run)
+   (check-true (last? O))
+   (check-equal? (last O) 3)
+   (react! r)
+   (check-false (last? O))
+   (check-true (reactor-done? r))
+   (react! r)
+   (check-false (last? O))))
+   
             

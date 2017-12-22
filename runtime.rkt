@@ -149,17 +149,6 @@
     [else
      (append-map get-top-level-susps (control-tree-children ct))]))
 
-;; ControlTree -> (Listof RThread)
-(define (get-top-level-threads ct)
-  (cond
-    [(and (suspend-unless? ct)
-          (not (signal-status (suspend-unless-signal ct))))
-     (list)]
-    [else
-     (append
-      (control-tree-next ct)
-      (append-map get-top-level-threads (control-tree-children ct)))]))
-
 ;; Reactor -> Void
 ;; reset the signal buffer for the next instant
 (define (reset-reactor-signals! g)
