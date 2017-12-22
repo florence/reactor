@@ -105,6 +105,14 @@ ending in a @racket[&] may only be used inside of a
  
 }
 
+@defform[(present& S then else)]{
+
+ Executes @racket[then] if @racket[S] is emitted in this
+ instant. Executes @racket[else] in the next instant
+ otherwise.
+                                 
+}
+
 @defform*[((await& #:immediate S)
            (await& S [pattern body ...] ...))]{
 
