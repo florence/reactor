@@ -11,6 +11,7 @@
         [result any/c]
         #:post (r)
         (not (reactor-ignited? r)))]
+  [reactor-ignited? (-> external-reactor? any/c)]
   [queue-emission!
    (-> (and/c external-reactor? reactor-ignited?)
        (or/c pure-signal? (list/c value-signal? any/c)) ... any)]
@@ -40,7 +41,15 @@
   (unless (or (reactor-done? r)
               (not (reactor-safe? r)))
     (define shutdown? #f)
-    (define messages
+    (define (do-cycle! f)
+      (match (f)
+        ['shutdown! (void)]
+        [#f (do-reaction! empty)]
+        [e (do-reaction! (append e (get-messages)))]))
+    (define (do-reaction! messages)
+      (apply react! r messages)
+      (unless shutdown? (cycle! r)))
+    (define (get-messages)
       (let loop ([acc empty])
         (match (thread-try-receive)
           [#f acc]
@@ -48,8 +57,11 @@
            (set! shutdown? #t)
            acc]
           [e (loop (append e acc))])))
-    (apply react! r messages)
-    (unless shutdown? (cycle! r))))
+    (cond
+      [(reactor-suspended? r)
+       (do-cycle! thread-receive)]
+      [else
+       (do-cycle! thread-try-receive)])))
 
 
 (define (reactor-ignited? r)
