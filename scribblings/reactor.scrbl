@@ -406,9 +406,9 @@ is the signal itself.
  Run reactions in the reactor automatically (in a different
  @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")]).
 
-
  A reaction runs if there is a queued reaction or if any
- thread @racket[pause&]ed in the last reaction.
+ thread @racket[pause&]ed in the last reaction---that is, if
+ @racket[reactor-done?] and @racket[reactor-suspended?] are @racket[#f].
 
  This function causes @racket[(reactor-ignited? r)] be true,
  and @racket[(reactor-safe? r)] to be false.
