@@ -68,6 +68,10 @@
   (and (hash-ref ignition-threads r #f) #t))
 
 (define (shutdown! r)
+  ;; TODO: a queue-emission! might sneak in here,
+  ;; if called concurrently with shutdown!
+  ;; can we avoid this (so 'shutdown! is always the last message)
+  ;; without a mutex?
   (match-define (ignition-control td ir) (hash-ref ignition-threads r))
   (hash-remove! ignition-threads r)
   (thread-send td 'shutdown! #f)
