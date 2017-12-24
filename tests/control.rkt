@@ -209,6 +209,17 @@
    (check-false (last? O))
    (check-true (reactor-done? r))
    (react! r)
-   (check-false (last? O))))
+   (check-false (last? O)))
+
+  (test-begin
+   (test-begin
+    (define-signal S 0 #:gather +)
+    (define-signal O 0 #:gather +)
+    (define r (prime (process (loop& (await& S [v (emit& O (add1 v))])))))
+    (for ([i (in-range 10)])
+      (react! r (list S i))
+      (react! r)
+      (check-true (last? O))
+      (check-equal? (last O) (add1 i))))))
    
             

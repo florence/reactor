@@ -1,7 +1,10 @@
 #lang scribble/manual
 @(require (for-label (except-in racket process last)
                      reactor
-                     reactor/engine))
+                     reactor/engine)
+          scribble/example)
+
+@(define evil (make-base-eval '(require reactor)))
 
 @title{Reactor: A synchronous reactive language}
 @defmodule[reactor]
@@ -53,12 +56,11 @@ ending in a @racket[&] may only be used inside of a
 @(define valid @list{Only valid inside
  of a @racket[process] or @racket[define-process].})
 
-@defform[(run& proc)]{
-                      
- Start the given process within the current one, blocking
- the thread until it completes. Evaluates to the result
- of the process. @valid
- 
+@defidform[paused&]{
+
+ Block the current thread until the next reaction. Evaluates
+ to @racket[(void)] in the next reaction. @valid
+
 }
 
 @defform[(par& e ...)]{
@@ -67,6 +69,7 @@ ending in a @racket[&] may only be used inside of a
  This blocks the current process until each new thread has
  finished. Evaluates to a list containing the result of each
  expression. @valid
+
                        
 }
 
@@ -78,17 +81,20 @@ ending in a @racket[&] may only be used inside of a
                         
 }
 
-@defidform[paused&]{
-
- Block the current thread until the next reaction. Evaluates
- to @racket[(void)] in the next reaction. @valid
-
-}
 
 @defidform[halt&]{
 
  Suspends the current thread indefinitely. @valid
                   
+}
+
+
+@defform[(run& proc)]{
+                      
+ Start the given process within the current one, blocking
+ the thread until it completes. Evaluates to the result
+ of the process. @valid
+ 
 }
 
 @subsection{Signals}
@@ -254,31 +260,32 @@ is the signal itself.
                                                 
 }
 
-@;{
-
 @section{Engine}
 
 @defmodule[reactor/engine]
 
-@defproc[(ignition! [r (and/c reactor? reactor-safe?)]
-                    [#:type reaction-type (or/c 'always 'on-queue)])
+@defproc[(ignition! [r (and/c reactor? reactor-safe?)])
          any]{
 
  Run reactions in the reactor automatically (in a different
- @tech["thread "#:doc '(lib "scribblings/reference/reference.scrbl")]).
- This makes @racket[reactor-safe?] return false.
+ @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")]).
 
- 
- If @racket[reaction-type] is @racket['on-queue], a reaction
- runs whenever there is a reaction queued by
- @racket[queue-reaction!] or @racket[queue-emission!]. If
- @racket[reaction-type] is @racket['always], a reaction runs
- if there is a queued reaction or if any thread
- @racket[pause&]ed in the last reaction.
 
- This function causes @racket[(reactor-ignited? r)] to
- return true.
+ A reaction runs if there is a queued reaction or if any
+ thread @racket[pause&]ed in the last reaction.
+
+ This function causes @racket[(reactor-ignited? r)] be true,
+ and @racket[(reactor-safe? r)] to be false.
                                                          
+}
+
+@defproc[(shutdown! [r (and/c reactor? reactor-ignited?)]) any]{
+
+ Stop running reactions automatically. Causes
+ @racket[(reactor-ignited? r)] to be false.
+ @racket[(reactor-safe? r)] may still be false if the reactor
+ crashed.
+
 }
 
 @defproc[(reactor-ignited? [r reactor?]) boolean?]{
@@ -286,16 +293,6 @@ is the signal itself.
  Has this reactor been ignited by @racket[ignition!].
  Implies @racket[(not (reactor-safe? r))].
                                                    
-}
-
-@defproc[(queue-reaction! [r (and/c reactor? reactor-ignited?)]) any]{
-
- Queue a reaction in this reactor. If the reactor is not
- currently reaction, a reaction will occur imminently.
- Otherwise one will begin once the current reaction
- completes. If there is already already a queued reaction,
- this function has no effect.
-                                                                  
 }
 
 @defproc[(queue-emission!
@@ -307,10 +304,35 @@ is the signal itself.
  emitted. If this function is called multiple times before
  the queued reaction runs, all the given @racket[emissions]
  occur in the next instant.
-                                                                  
+ 
 }
 
-             }
+@defproc[(bind-signal [r (and/c reactor? reactor-ignited?)]
+                      [s signal?]
+                      [e evt?])
+         evt?]{
+
+ Create an event that is ready when @racket[e] is ready, but
+ who's synchronization result is itself. When
+ synchronized on @racket[s] is queued for emission in
+ @racket[r]. If @racket[s] is a @racket[value-signal?], it is
+ emitted with the
+ @tech["synchronization result" #:doc '(lib "scribblings/reference/reference.scrbl")]
+ of @racket[e].
+
+ If @racket[r] is @racket[shutdown!], this event will never
+ become ready, and never queue an emission, even if the reactor is reignited.
+
+ @bold{Warning:} Even if @racket[r] is @racket[shutdown!],
+ synchronizing on the result of @racket[bind-signal] could
+ still synchronize on @racket[e]. For example, if @racket[e]
+ is a
+ @tech["semaphore"  #:doc '(lib "scribblings/reference/reference.scrbl")],
+ synchronizing on the result of @racket[bind-signal] might
+ decrement the semaphores counter, even though the event is
+ never ready.
+
+}
 
 
 

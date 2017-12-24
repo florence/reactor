@@ -2,63 +2,79 @@
 (provide
  (contract-out
   [ignition!
-   (-> (and/c external-reactor? reactor-safe?) #:type (or/c 'always 'on-queue) any)]
-  [queue-reaction!
-   (-> (and/c (and/c reactor? reactor-ignited?)
-              reactor-ignited?) any)]
+   (->i ([r (and/c external-reactor? reactor-safe?)])
+        [result any/c]
+        #:post (r)
+        (and (not (reactor-safe? r)) (reactor-ignited? r)))]
+  [shutdown!
+   (->i ([r (and/c external-reactor? reactor-ignited?)])
+        [result any/c]
+        #:post (r)
+        (not (reactor-ignited? r)))]
   [queue-emission!
-   (-> (and/c reactor? reactor-ignited?)
-       (or/c pure-signal? (list/c value-signal? any/c)) ... any)]))
+   (-> (and/c external-reactor? reactor-ignited?)
+       (or/c pure-signal? (list/c value-signal? any/c)) ... any)]
+  [bind-signal
+   (-> (and/c external-reactor? reactor-ignited?) signal? evt? evt?)]))
 
 (require "runtime.rkt" "compiler.rkt" "data.rkt")
 
 ;; maps external reactors to their control thread
+(struct ignition-control (thread reactor))
 (define ignition-threads (make-weak-hasheq))
 
-;; ExternalReactor (or/c 'always 'on-queue) -> IgnitionControl
-(define (ignition! er #:type type)
+;; ExternalReactor -> Void
+(define (ignition! er)
   (define r* (external-reactor-internal er))
-  (reactor-unsafe! r #f)
-  (define r (make-external-reactor r*))
+  (reactor-unsafe! er)
   
   (define td
     (thread
      (lambda ()
-       (let loop ()
-         (cond
-           [(or (reactor-done? r)
-                (not (reactor-safe? r)))
-            (void)]
-           [else
-            (cycle! r type)
-            (loop)])))))
+       (define r (make-external-reactor r*))
+       (cycle! r))))
   
-  (hash-set! ignition-threads er td))
+  (hash-set! ignition-threads er (ignition-control td r*)))
 
-(define (cycle! r type)
-  (define messages
-    (match r
-      ['always (get-messages!)]
-      ['on-queue (append (thread-receive) (get-messages!))]))
-  (apply react! messages))
+(define (cycle! r)
+  (unless (or (reactor-done? r)
+              (not (reactor-safe? r)))
+    (define shutdown? #f)
+    (define messages
+      (let loop ([acc empty])
+        (match (thread-try-receive)
+          [#f acc]
+          ['shutdown!
+           (set! shutdown? #t)
+           acc]
+          [e (loop (append e acc))])))
+    (apply react! r messages)
+    (unless shutdown? (cycle! r))))
 
-(define (get-messages!)
-  (let loop ([acc empty])
-    (define n (thread-try-receive))
-    (if (not n) acc (loop (append n acc)))))
 
 (define (reactor-ignited? r)
   (and (hash-ref ignition-threads r #f) #t))
 
-;; Reactor -> Void
-;; request a reaction. Idempotent if one is already queued
-(define (queue-reaction! r)
-  (queue-emission! r))
+(define (shutdown! r)
+  (match-define (ignition-control td ir) (hash-ref ignition-threads r))
+  (hash-remove! ignition-threads r)
+  (thread-send td 'shutdown! #f)
+  (thread-wait td)
+  (inject! r ir))
 
-;; Reactor . (or/c Signal (list/c Signal Any)) -> Void
-;; queue a reaction with this signal emission
 (define (queue-emission! r . v)
-  (thread-send (hash-ref ignition-threads r) v))
+  (thread-send
+   (ignition-control-thread (hash-ref ignition-threads r))
+   v #f))
 
-
-
+(define (bind-signal r s evt)
+  (define ic (hash-ref ignition-threads r))
+  (replace-evt
+   evt
+   (lambda (v)
+     (cond [(not (eq? ic (hash-ref ignition-threads r #f)))
+            never-evt]
+           [else
+            (if (pure-signal? s)
+                (queue-emission! r s)
+                (queue-emission! r (list s v)))]))))
