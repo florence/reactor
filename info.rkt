@@ -5,8 +5,7 @@
 
 (define version "0.1")
 
-(define deps '("rackunit-lib"
-               ("base" #:version "6.11.0.2")))
+(define deps '(("base" #:version "6.11") "rackunit-lib"))
 
 (define build-deps
   '("racket-doc" "scribble-lib" "rackunit"))
