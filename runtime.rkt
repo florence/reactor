@@ -38,13 +38,14 @@
 
   
 
-;; Process -> Reactor
+;; Process -> ExternalreaReactor
 (define (prime proc)
-  (make-reactor (process-thunk proc)))
+  (make-external-reactor (make-reactor (process-thunk proc))))
 
 ;; Reactor (Listof (or PureSignal (List ValueSignal Any))) -> Any
 ;; run a reaction on this reactor
-(define (react! grp . signals)
+(define (react! r . signals)
+  (define grp (external-reactor-internal r))
   (parameterize ([current-reactor grp])
     (for ([i (in-list signals)])
       (match i
@@ -64,8 +65,8 @@
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
 (define (sched! g)
-  (unless (reactor-suspended? g)
-    (match-define (reactor os active blocked ct susps signals safe?) g)
+  (unless (ireactor-suspended? g)
+    (match-define (reactor os active blocked ct susps signals) g)
     (define next (first active))
     (set-reactor-active! g (rest active))
     (%%
@@ -78,7 +79,7 @@
 ;; reactor -> Void
 ;; should not be called within a `reactive-tag`.
 (define (cleanup! g)
-  (match-define (reactor os active blocked ct susps signals safe?) g)
+  (match-define (reactor os active blocked ct susps signals) g)
   (for* ([(_ procs) (in-hash blocked)]
          [b (in-list procs)])
     (run-next! (blocked-ct b) (blocked-absent b)))
@@ -168,8 +169,8 @@
      (foldl (value-signal-gather S) (first c) (rest c)))
     (set-value-signal-collection! S empty))
   (set-signal-last?! S (signal-status S))
-  ;; re-add signal to emission list, so its last value is correctly changed
   (when (signal-status S)
+    (ready-signal! S)
     (set-reactor-signals! g (cons S (reactor-signals g))))
   (set-signal-status! S #f))
 
@@ -187,14 +188,20 @@
    (cons S (reactor-signals (current-reactor))))
   (unblock! S))
 
-;; Reactor -> Boolean
+;; ExternalReactor -> Boolean
 ;; does this reactor have no active threads?
 (define (reactor-suspended? g)
-  (empty? (reactor-active g)))
+  (empty? (reactor-active (external-reactor-internal g))))
 
 ;; Reactor -> Boolean
+;; does this reactor have no active threads?
+(define (ireactor-suspended? g)
+  (empty? (reactor-active g)))
+
+;; ExternalReactor -> Boolean
 ;; does this reactor have active threads or suspensions?
-(define (reactor-done? g)
+(define (reactor-done? r)
+  (define g (external-reactor-internal r))
   (and
    (empty? (reactor-active g))
    (hash-empty? (reactor-susps g))))

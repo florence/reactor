@@ -3,3 +3,5 @@
 [![Scribble](https://img.shields.io/badge/Docs-Scribble-blue.svg)](http://pkg-build.racket-lang.org/doc/reactor/index.html)
 
 An embedded synchronous reactive language, a la reactiveML, for Racket.
+
+This package is still experimental, especially its interaction with Rackets threads and synchronization system.

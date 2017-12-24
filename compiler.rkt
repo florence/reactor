@@ -59,9 +59,10 @@
 (define-syntax define-signal
   (syntax-parser
     [(_ S:id)
-     #'(define S (make-pure-signal #f #f))]
+     #'(define S (make-pure-signal #f #f (make-signal-evt)))]
     [(_ S:id default:expr #:gather gather:expr)
-     #'(define S (make-value-signal #f #f default empty gather))]))
+     #'(define S
+         (make-value-signal #f #f (make-signal-evt) default empty gather))]))
 (define-syntax signal*
   (syntax-parser
     [(signal S:id e) #'(signal (S) e)]
@@ -152,12 +153,10 @@
   (syntax-parser
     [halt:id #'(signal* S (suspend& (void) #:unless S))]))
 
-
-
 ;; Signal -> Process
 ;; block until the signal is present (including in this instant)
 (define-process (await-immediate S)
-  (present& S (void) (run& (await-immediate S))))
+  (suspend& (void) #:unless S))
 
 (define-process (await S)
   (begin (run& (await-immediate S)) pause&))
@@ -166,8 +165,6 @@
 ;; Await a value for the signal S, and give it to `f`
 ;; when ready
 (define-process (await-value S f)
-  (present& S
-            (begin
-              pause&
-              (f (last S)))
-            (run& (await-value S f))))
+  (suspend& (void) #:unless S)
+  pause&
+  (f (last S)))

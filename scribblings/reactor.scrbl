@@ -1,6 +1,7 @@
 #lang scribble/manual
 @(require (for-label (except-in racket process last)
-                     reactor))
+                     reactor
+                     reactor/engine))
 
 @title{Reactor: A synchronous reactive language}
 @defmodule[reactor]
@@ -9,6 +10,7 @@
 change without warning.
 
 @section{Running Programs}
+
 @defproc[(prime [proc process?]) reactor?]{
                                            
  Create a new reactor, primed the one thread.
@@ -21,11 +23,6 @@ change without warning.
 
  Run one reaction in the reactor. The reactions begins by
  emitting the given signals with the given value.
-
- @bold{Warning:} @racket[react!] is not thread safe. Two
- reactions in @racket[r] should not take place concurrently,
- and @tech{signals} used by @racket[r] should not be observed
- outside of @racket[r] during a reaction.
 
 }
 
@@ -83,20 +80,29 @@ ending in a @racket[&] may only be used inside of a
 
 @defidform[paused&]{
 
- Block the current thread until the next reaction. evaluates
+ Block the current thread until the next reaction. Evaluates
  to @racket[(void)] in the next reaction. @valid
 
 }
 
 @defidform[halt&]{
 
- Blocks this thread forever. @valid
+ Suspends the current thread indefinitely. @valid
                   
 }
 
 @subsection{Signals}
 
-@deftech{Signals} are the core communication mechanism within a Reactor.
+@deftech{Signals} are the core communication mechanism both
+within a Reactor, and between a reactor and its environment.
+It is never safe to share a signal between two reactors.
+
+Signals act as
+@tech["synchronizable event" #:doc '(lib "scribblings/reference/reference.scrbl")],
+which becomes ready for synchronization at the end of a
+reaction in which the signal was emitted. The
+@tech["synchronization result" #:doc '(lib "scribblings/reference/reference.scrbl")]
+is the signal itself.
 
 @defform*[((define-signal S)
            (define-signal S default #:gather gather))]{
@@ -243,6 +249,68 @@ ending in a @racket[&] may only be used inside of a
 
  Can `react!` be called directly on this reactor? This
  returns false if either the reactor is under the control of
- an ignition thread, or raised an exception during execution.
+ an ignition thread, or if this reactor was created in a
+ different thread.
                                                 
 }
+
+@;{
+
+@section{Engine}
+
+@defmodule[reactor/engine]
+
+@defproc[(ignition! [r (and/c reactor? reactor-safe?)]
+                    [#:type reaction-type (or/c 'always 'on-queue)])
+         any]{
+
+ Run reactions in the reactor automatically (in a different
+ @tech["thread "#:doc '(lib "scribblings/reference/reference.scrbl")]).
+ This makes @racket[reactor-safe?] return false.
+
+ 
+ If @racket[reaction-type] is @racket['on-queue], a reaction
+ runs whenever there is a reaction queued by
+ @racket[queue-reaction!] or @racket[queue-emission!]. If
+ @racket[reaction-type] is @racket['always], a reaction runs
+ if there is a queued reaction or if any thread
+ @racket[pause&]ed in the last reaction.
+
+ This function causes @racket[(reactor-ignited? r)] to
+ return true.
+                                                         
+}
+
+@defproc[(reactor-ignited? [r reactor?]) boolean?]{
+
+ Has this reactor been ignited by @racket[ignition!].
+ Implies @racket[(not (reactor-safe? r))].
+                                                   
+}
+
+@defproc[(queue-reaction! [r (and/c reactor? reactor-ignited?)]) any]{
+
+ Queue a reaction in this reactor. If the reactor is not
+ currently reaction, a reaction will occur imminently.
+ Otherwise one will begin once the current reaction
+ completes. If there is already already a queued reaction,
+ this function has no effect.
+                                                                  
+}
+
+@defproc[(queue-emission!
+          [r (and/c reactor? reactor-ignited?)]
+          [emissions (or/c pure-signal? (list/c value-signal? any/c))] ...)
+         any]{
+
+ Queue a reaction in this reactor, with the given signals
+ emitted. If this function is called multiple times before
+ the queued reaction runs, all the given @racket[emissions]
+ occur in the next instant.
+                                                                  
+}
+
+             }
+
+
+
