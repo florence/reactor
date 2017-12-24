@@ -189,9 +189,11 @@
   (unblock! S))
 
 ;; ExternalReactor -> Boolean
-;; does this reactor have no active threads?
+;; does this reactor have no active threads, but have suspened threads?
 (define (reactor-suspended? g)
-  (empty? (reactor-active (external-reactor-internal g))))
+  (define r (external-reactor-internal g))
+  (and (ireactor-suspended? r)
+       (not (hash-empty? (reactor-susps r)))))
 
 ;; Reactor -> Boolean
 ;; does this reactor have no active threads?

@@ -56,10 +56,20 @@ ending in a @racket[&] may only be used inside of a
 @(define valid @list{Only valid inside
  of a @racket[process] or @racket[define-process].})
 
-@defidform[paused&]{
+@defidform[pause&]{
 
  Block the current thread until the next reaction. Evaluates
- to @racket[(void)] in the next reaction. @valid
+ to @racket[(void)] in the next reaction.
+
+ @valid
+
+ @examples[#:eval evil
+           (define-process pause
+             pause&
+             (displayln 1))
+           (define r (prime pause))
+           (react! r)
+           (react! r)]
 
 }
 
@@ -68,8 +78,21 @@ ending in a @racket[&] may only be used inside of a
  Runs each @racket[e] independently in the current process.
  This blocks the current process until each new thread has
  finished. Evaluates to a list containing the result of each
- expression. @valid
+ expression.
 
+ @valid
+
+ @examples[#:eval evil
+           (define-process par1
+             (displayln (par& 1 2)))
+           (react! (prime par1))
+           (define-process par2
+             (displayln
+              (par& 1
+                    (begin pause& 2))))
+           (define r (prime par2))
+           (react! r)
+           (react! r)]
                        
 }
 
@@ -77,14 +100,48 @@ ending in a @racket[&] may only be used inside of a
 
  Loop @racket[body]s forever. The body of the loop must be
  non-instantaneous: it must pause each instant the loop
- (re)starts. @valid
+ (re)starts.
+
+ @valid
+
+ @examples[#:eval evil
+           (define-process loop
+             (let ([i 0])
+               (loop& (displayln i)
+                      (set! i (+ 1 i))
+                      pause&)))
+           (define r (prime loop))
+           (react! r)
+           (react! r)
+           (react! r)
+           (react! r)]
                         
 }
 
 
 @defidform[halt&]{
 
- Suspends the current thread indefinitely. @valid
+ Suspends the current thread indefinitely.
+
+ @valid
+
+
+ @examples[#:eval evil
+           (define-process halt
+             (displayln 1)
+             halt&
+             (displayln 2))
+           (define r (prime halt))
+           (react! r)
+           (react! r)
+           (react! r)
+           (define-process par-halt
+             (par& (begin (displayln 1) pause& (displayln 2))
+                   (begin (displayln 3) halt& (displayln 4))))
+           (define r2 (prime par-halt))
+           (code:line (react! r2) (code:comment "note: these may display in either order"))
+           (react! r2)
+           (react! r2)]
                   
 }
 
@@ -93,8 +150,21 @@ ending in a @racket[&] may only be used inside of a
                       
  Start the given process within the current one, blocking
  the thread until it completes. Evaluates to the result
- of the process. @valid
- 
+ of the process.
+
+ @valid
+
+ @examples[#:eval evil
+           (define-process (my-loop i)
+             (displayln i)
+             pause&
+             (run& (my-loop (add1 i))))
+           (define r (prime (my-loop 0)))
+           (react! r)
+           (react! r)
+           (react! r)]
+                   
+
 }
 
 @subsection{Signals}
@@ -134,7 +204,9 @@ is the signal itself.
            [(emit& [S value-signal?] [v any]) void?])]{
 
  Emits a signal in the current instant. If the signal
- carries a value, one must be given. @valid
+ carries a value, one must be given.
+
+ @valid
  
 }
 
@@ -143,7 +215,9 @@ is the signal itself.
  Evaluates to @racket[then] if @racket[S] is emitted in this
  instant. Evaluates to @racket[else] in the next instant
  otherwise.
-                                 
+ 
+ @valid
+ 
 }
 
 @defform*[((await& maybe-immediate S)
@@ -165,6 +239,7 @@ is the signal itself.
  
 }
 
+
 @defproc[(last [S value-signal?]) any]{
 
  Gets the value of @racket[S] in the previous instant.
@@ -177,15 +252,62 @@ is the signal itself.
 
 }
 
+
+@examples[#:eval evil
+          (define-signal input)
+          (code:comment "pure-signal -> process")
+          (define-process (main input)
+            (define-signal crosstalk 0 #:gather +)
+            (par& (run& (counter input crosstalk))
+                  (run& (printloop crosstalk))))
+          (code:comment "pure-signal? value-signal? -> process")
+          (define-process (counter input chan)
+            (emit& chan 0)
+            (loop&
+             (await& #:immediate input)
+             (emit& chan (add1 (last chan)))
+             pause&))
+          (code:comment "value-signal? integer -> process")
+          (define-process (printloop chan)
+            (loop&
+             (await& chan
+                     [times
+                      (printf "got total of ~a inputs" times)])))
+          (define r (prime (main input)))
+          (react! r)
+          (react! r)
+          (react! r input)
+          (react! r)
+          (react! r)
+          (react! r input)
+          (react! r)]
+
 @subsection{Control}
 
 @defform[(suspend& e ... #:unless S)]{
                                       
  Runs @racket[e] unless @racket[S] any instant
  where @racket[S] is emitted. Suspends the body and blocks
- otherwise. Evaluates to its the result of body. @valid
- 
+ otherwise. Evaluates to its the result of body.
+
+ @valid
+
+ @examples[#:eval evil
+           (define-process (hi unlock)
+             (suspend&
+              (loop& (displayln 'hello) pause&)
+              #:unless unlock))
+           (define-signal print)
+           (define r (prime (hi print)))
+           (react! r print)
+           (react! r)
+           (react! r)
+           (react! r print)
+           (reactor-suspended? r)]
+
 }
+ 
+
 
 @defform[(abort& e ... #:after S [pattern body ...] ...)]{
 
@@ -201,6 +323,19 @@ is the signal itself.
  the body is aborted, the form evaluates to the result of @racket[e].
 
  @valid
+
+ @examples[#:eval evil
+           (define-process (annoying silence)
+             (abort&
+              (loop& (displayln "I know a song that gets on everybody's nerves") pause&)
+              #:after silence))
+           (define-signal off)
+           (define r (prime (annoying off)))
+           (react! r)
+           (react! r)
+           (react! r off)
+           (react! r)
+           (reactor-done? r)]
 
 }
 
@@ -232,8 +367,9 @@ is the signal itself.
 
 @defproc[(reactor-suspended? [r reactor?]) boolean?]{
 
- Is @racket[r] completely suspended. That is, are there
- threads queued to immediately run on the next reaction?
+ Is @racket[r] completely suspended. That is, there are no
+ threads queued to immediately run on the next reaction, but
+ there are some threads suspended on a signal
 
 }
 
