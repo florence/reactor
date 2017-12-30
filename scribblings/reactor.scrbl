@@ -9,8 +9,6 @@
 @title{Reactor: A synchronous reactive language}
 @defmodule[reactor]
 
-@bold{Warning:} The API presented here is unstable, and may
-change without warning.
 
 @section{Running Programs}
 
@@ -172,13 +170,6 @@ ending in a @racket[&] may only be used inside of a
 @deftech{Signals} are the core communication mechanism both
 within a Reactor, and between a reactor and its environment.
 It is never safe to share a signal between two reactors.
-
-Signals act as
-@tech["synchronizable event" #:doc '(lib "scribblings/reference/reference.scrbl")],
-which becomes ready for synchronization at the end of a
-reaction in which the signal was emitted. The
-@tech["synchronization result" #:doc '(lib "scribblings/reference/reference.scrbl")]
-is the signal itself.
 
 @defform*[((define-signal S)
            (define-signal S default #:gather gather))]{
@@ -389,14 +380,53 @@ is the signal itself.
 
 @defproc[(reactor-safe? [r reactor?]) boolean?]{
 
- Can `react!` be called directly on this reactor? This
- returns false if either the reactor is under the control of
- an ignition thread, or if this reactor was created in a
- different thread.
+ Can `react!` be called directly on this reactor? It returns false
+ if any uncaught exception is raised in a reaction.
+
+ See @secref["r&t"] for unstable behavior of this function.
+
                                                 
 }
 
-@section{Engine}
+@section{Caveats and unstable API's}
+
+
+@bold{Warning:} The API's and behaviors presented here is unstable, and may
+change without warning.
+
+@subsection[#:tag "r&t"]{Reactions and Threads}
+
+Reactors are not @racket[reactor-safe?] if either the
+reactor is under the control of an ignition thread, or if
+this reactor was created in a different thread.
+
+@subsection{Signals and Synchronization}
+
+Signals act as
+@tech["synchronizable event" #:doc '(lib "scribblings/reference/reference.scrbl")],
+which becomes ready for synchronization at the end of a
+reaction in which the signal was emitted. The
+@tech["synchronization result" #:doc '(lib "scribblings/reference/reference.scrbl")]
+is the signal itself.
+
+Signals are currently not thread safe: if a signal is used
+(via @racket[last?] or @racket[last]) in a thread different
+from a reaction where it is being used, extra
+synchronization must be used to ensure the signal is not
+look at during a reaction.
+
+@subsection{Caveat concerning exception handling}
+
+Catching an exception inside of a reaction is currently
+unsafe. For example, if an exception passed through a
+@racket[par&], @racket[suspend&], or @racket[abort&] for the
+reactors control structure may become corrupted, and the
+reaction may block forever, or raise internal errors.
+
+In addition if an exception is raised within a reaction, the
+state of any signals it could have effected are indeterminate.
+
+@subsection{Engine}
 
 @defmodule[reactor/engine]
 

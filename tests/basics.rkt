@@ -199,8 +199,10 @@
   (test-begin
    (define-signal b)
    (define r (prime (process (emit& b 1))))
-   (check-exn #rx"Expected value carrying signal" (lambda () (react! r))))
+   (check-exn #rx"Expected value carrying signal" (lambda () (react! r)))
+   (check-false (reactor-safe? r)))
   (test-begin
    (define-signal b 0 #:gather +)
    (define r (prime (process (emit& b))))
-   (check-exn #rx"Expected pure signal" (lambda () (react! r)))))
+   (check-exn #rx"Expected pure signal" (lambda () (react! r)))
+   (check-false (reactor-safe? r))))

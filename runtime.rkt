@@ -46,15 +46,16 @@
 ;; run a reaction on this reactor
 (define (react! r . signals)
   (define grp (external-reactor-internal r))
-  (parameterize ([current-reactor grp])
-    (for ([i (in-list signals)])
-      (match i
-        [(list a b) (emit-value a b)]
-        [a (emit-pure a)])))
-  (call-with-continuation-prompt
-   (lambda () (sched! grp))
-   reactive-tag)
-  (cleanup! grp))
+  (with-handlers ([void (lambda (e) (reactor-unsafe! r) (raise e))])
+    (parameterize ([current-reactor grp])
+      (for ([i (in-list signals)])
+        (match i
+          [(list a b) (emit-value a b)]
+          [a (emit-pure a)])))
+    (call-with-continuation-prompt
+     (lambda () (sched! grp))
+     reactive-tag)
+    (cleanup! grp)))
 
 ;; (-> Any) -> Reactor
 ;; make a reactor containing only the given thread, which is active

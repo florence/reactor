@@ -35,7 +35,6 @@
 ;; `susps` is active suspensions, keys on their blocking signal
 ;; `signals` is a list of all signals in the program, that have been emitted
 ;;   they may be reset inbetween instants
-;; `safe?` is true if the reactor may be controlled from outside of an ignition thread
 
 ;; a RThread is a (-> Any), and is the continuation of a thread
 
