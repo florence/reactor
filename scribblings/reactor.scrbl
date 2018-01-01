@@ -50,7 +50,11 @@ reaction.
  @racket[body].
 
  These processes are not related to Rackets
- @seclink["subprocess" #:doc '(lib "scribblings/reference/reference.scrbl")]{processes}.
+ @seclink["subprocess" #:doc '(lib "scribblings/reference/reference.scrbl")]{
+  processes}. Processes are also not related to
+ @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")].
+ The value of @racket[current-thread] may change without
+ warning within a given process.
  
 }
 
