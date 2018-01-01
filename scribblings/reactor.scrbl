@@ -6,7 +6,7 @@
 
 @(define evil (make-base-eval '(require reactor)))
 
-@title{Reactor: A synchronous reactive language}
+@title{Reactor: a synchronous reactive language}
 @defmodule[reactor]
 
 @(define synchronl "https://www-sop.inria.fr/mimosa/rp/generalPresentation/index.html")
