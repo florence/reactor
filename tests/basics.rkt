@@ -205,4 +205,17 @@
    (define-signal b 0 #:gather +)
    (define r (prime (process (emit& b))))
    (check-exn #rx"Expected pure signal" (lambda () (react! r)))
-   (check-false (reactor-safe? r))))
+   (check-false (reactor-safe? r)))
+  (test-begin
+   (define f void)
+   (define r
+     (prime (process (set! f (lambda () pause&)))))
+   (react! r)
+   (check-exn #rx"process escaped reactor context" f))
+  (test-begin
+   (define f void)
+   (define-signal S)
+   (define r
+     (prime (process (set! f (lambda () (present& S 1 2))))))
+   (react! r)
+   (check-exn #rx"process escaped reactor context" f)))

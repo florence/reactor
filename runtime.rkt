@@ -29,13 +29,23 @@
 
 ;;;;;; OS
 
-(define current-reactor (make-parameter #f))
-(define reactive-tag  (make-continuation-prompt-tag 'react))
+(define the-current-reactor (make-parameter #f))
+(define (current-reactor)
+  (define r (the-current-reactor))
+  (unless r
+    (raise-process-escape-error))
+  r)
+(define reactive-tag  (make-continuation-prompt-tag 'reaction))
 (define-syntax %%
   (syntax-parser
     [(_ k:id body ...)
-     #'(call/cc (lambda (k) body ...) reactive-tag)]))
+     #'(begin
+         (unless (continuation-prompt-available? reactive-tag)
+           (raise-process-escape-error))
+         (call/cc (lambda (k) body ...) reactive-tag))]))
 
+(define (raise-process-escape-error)
+  (error "process escaped reactor context"))
   
 
 ;; Process -> ExternalreaReactor
@@ -47,14 +57,16 @@
 (define (react! r . signals)
   (define grp (external-reactor-internal r))
   (with-handlers ([void (lambda (e) (reactor-unsafe! r) (raise e))])
-    (parameterize ([current-reactor grp])
+    (parameterize ([the-current-reactor grp])
       (for ([i (in-list signals)])
         (match i
           [(list a b) (emit-value a b)]
           [a (emit-pure a)])))
-    (call-with-continuation-prompt
-     (lambda () (sched! grp))
-     reactive-tag)
+    (call-with-continuation-barrier
+     (lambda ()
+       (call-with-continuation-prompt
+        (lambda () (sched! grp))
+        reactive-tag)))
     (cleanup! grp)))
 
 ;; (-> Any) -> Reactor
@@ -73,7 +85,7 @@
     (%%
      k
      (set-reactor-os! g (lambda () (k (void))))
-     (parameterize ([current-reactor g])
+     (parameterize ([the-current-reactor g])
        (next)))
     (sched! g)))
 
