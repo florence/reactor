@@ -9,12 +9,23 @@
 @title{Reactor: A synchronous reactive language}
 @defmodule[reactor]
 
+@(define synchronl "https://www-sop.inria.fr/mimosa/rp/generalPresentation/index.html")
+
+Reactor is a @hyperlink[synchronl]{synchronous reactive}
+language in the style of @hyperlink["http://rml.lri.fr/"]{
+ ReactiveML}. A program is represented by a
+@racket[reactor?], which consists of @racket[process?]es.
+The run of one program is broken up into reactions, each of
+which can be though of as being instantaneous. Every
+expression in the program either takes zero time (e.g.
+completes in the current reaction) or pauses until the next
+reaction.
 
 @section{Running Programs}
 
 @defproc[(prime [proc process?]) reactor?]{
                                            
- Create a new reactor, primed the one thread.
+ Create a new reactor, primed the one process.
  
 }
 
@@ -37,6 +48,9 @@
  The second variant creates a new function, @racket[func]
  which takes @racket[args] and returns the process defined by
  @racket[body].
+
+ These processes are not related to Rackets
+ @seclink["subprocess" #:doc '(lib "scribblings/reference/reference.scrbl")]{processes}.
  
 }
 
@@ -56,7 +70,7 @@ ending in a @racket[&] may only be used inside of a
 
 @defidform[pause&]{
 
- Block the current thread until the next reaction. Evaluates
+ Block the current process until the next reaction. Evaluates
  to @racket[(void)] in the next reaction.
 
  @valid
@@ -73,9 +87,9 @@ ending in a @racket[&] may only be used inside of a
 
 @defform[(par& e ...)]{
 
- Runs each @racket[e] independently in the current process.
- This blocks the current process until each new thread has
- finished. Evaluates to a list containing the result of each
+ Runs each @racket[e] as an independent process. This blocks
+ the current process until each new process has finished.
+ Evaluates to a list containing the result of each
  expression.
 
  @valid
@@ -119,7 +133,7 @@ ending in a @racket[&] may only be used inside of a
 
 @defidform[halt&]{
 
- Suspends the current thread indefinitely.
+ Suspends the current process indefinitely.
 
  @valid
 
@@ -147,7 +161,7 @@ ending in a @racket[&] may only be used inside of a
 @defform[(run& proc)]{
                       
  Start the given process within the current one, blocking
- the thread until it completes. Evaluates to the result
+ the process until it completes. Evaluates to the result
  of the process.
 
  @valid
@@ -359,14 +373,14 @@ It is never safe to share a signal between two reactors.
 @defproc[(reactor-suspended? [r reactor?]) boolean?]{
 
  Is @racket[r] completely suspended. That is, there are no
- threads queued to immediately run on the next reaction, but
- there are some threads suspended on a signal
+ processes queued to immediately run on the next reaction, but
+ there are some processes suspended on a signal
 
 }
 
 @defproc[(reactor-done? [r reactor?]) boolean?]{
 
- Is @racket[r] done. That is, are there threads queued to
+ Is @racket[r] done. That is, are there processes queued to
  immediately run on the next reaction and no suspensions
  waiting blocked on a signal?
 
@@ -437,7 +451,7 @@ state of any signals it could have effected are indeterminate.
  @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")]).
 
  A reaction runs if there is a queued reaction or if any
- thread @racket[pause&]ed in the last reaction---that is, if
+ process @racket[pause&]ed in the last reaction---that is, if
  @racket[reactor-done?] and @racket[reactor-suspended?] are @racket[#f].
 
  This function causes @racket[(reactor-ignited? r)] be true,
