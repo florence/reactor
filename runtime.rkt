@@ -364,7 +364,7 @@
     [(S v) (emit-value S v)]))
 
 
-;; (-> Any) (Any -> Nothing) -> (-> Nothing)
+;; (-> A) (A -> Nothing) -> (-> Nothing)
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k)
