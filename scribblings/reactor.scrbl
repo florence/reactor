@@ -448,6 +448,8 @@ state of any signals it could have effected are indeterminate.
 
 @defmodule[reactor/engine]
 
+Bindings for automatically running reactions
+
 @defproc[(ignition! [r (and/c reactor? reactor-safe?)])
          any]{
 
