@@ -17,6 +17,9 @@
 ;; ExternalReactor -> Void
 (define (reactor-unsafe! r)
   (inject! r #f))
+;; ExternalReactor InternalReactor -> Void
+(define (reactor-safe! r grp)
+  (inject! r grp))
 ;; ExternalReactor (or Reactor #f) -> ExternalReactor
 (define (inject! er r)
   (thread-cell-set! (external-reactor-cell er) r))

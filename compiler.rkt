@@ -13,7 +13,8 @@
  loop&
  halt&
  abort&
- present&)
+ present&
+ with-handlers&)
 (require "data.rkt" "runtime.rkt")
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax) racket/hash racket/stxparam)
                                                            
@@ -93,7 +94,7 @@
            (let ([nt (make-suspend-unless empty empty S)])
              (with-extended-control
               (lambda ()
-                (run-next! nt (continue-at (lambda () e ...) k))
+                (run-next! nt (continue-at (lambda () e ...) k nt))
                 (activate-suspends! nt)
                 (switch!))
               nt)))]))
@@ -102,30 +103,32 @@
     [(abort& e:expr ... #:after S)
      #'(%%
         k
-        (with-extended-control
-         (lambda () e ...)
-         (make-preempt-when
-          empty empty S
-          (lambda () (lambda () (k (void)))))))]
+        (let ([ct (current-control-tree)])
+          (with-extended-control
+           (lambda () e ...)
+           (make-preempt-when
+            empty empty S
+            (lambda () (continue-at void k ct))))))]
     [(abort& e:expr ... #:after S [pattern body ...] ...)
      #'(%%
         k
-        (with-extended-control
-         (lambda () e ...)
-         (make-preempt-when
-          empty empty S
-          (extend-with-parameterization
-           (lambda ()
-             (match (last S)
-               [pattern (lambda () (k (begin body ...)))] ...
-               [_ #f]))))))]))
+        (let ([ct (current-control-tree)])
+          (with-extended-control
+           (lambda () e ...)
+           (make-preempt-when
+            empty empty S
+            (extend-with-parameterization
+             (lambda ()
+               (match (last S)
+                 [pattern (continue-at (lambda () body ...) k ct)] ...
+                 [_ #f])))))))]))
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
 (define (with-extended-control body new-tree)
   (add-new-control-tree! (current-control-tree) new-tree)
   (parameterize ([current-control-tree new-tree])
-    (body)))
+    (call-with-control-safety body (current-control-tree))))
 
 (define-syntax/in-process await&
   (syntax-parser
@@ -152,6 +155,25 @@
 (define-syntax/in-process halt&
   (syntax-parser
     [halt:id #'(signal* S (suspend& (void) #:unless S))]))
+
+(define-syntax/in-process with-handlers&
+  (syntax-parser
+    [(with-handlers& ([p:expr h:expr] ...) body:expr ...)
+     (define/with-syntax (v ...)
+       (for/list ([_ (in-list (syntax->list #'(p ...)))] [i (in-naturals)])
+         i))
+     #'(signal& ([S #f #:gather values])
+         (abort&
+          (with-handler-pred
+           (lambda (exn)
+             (cond
+               [(h exn) v] ...))
+           S
+           (lambda () body ...)
+           (current-control-tree))
+          #:after S
+          [(list v exn) (h exn)] ...))]))
+                     
 
 ;; Signal -> Process
 ;; block until the signal is present (including in this instant)

@@ -30,6 +30,7 @@
  suspend&
  abort&
  loop&
- halt&)
+ halt&
+ with-handlers&)
 (require "data.rkt" "runtime.rkt" "compiler.rkt")
 

@@ -348,6 +348,17 @@ It is never safe to share a signal between two reactors.
 
 }
 
+
+@defform[(with-handlers& ([a b] ...) body ...)]{
+
+ Like @racket[with-handlers], but that works with reactive
+ machines. Specifically, whenever a raised exception is
+ caught by a @racket[with-handlers&], it behaves like an
+ abort, with body being aborted at the end of the current instant, and the
+ corresponding handler is run in the next instant.
+
+}
+
 @section{Data}
 
 @defproc[(signal? [S any]) boolean?]{
