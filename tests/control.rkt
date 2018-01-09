@@ -221,5 +221,3 @@
       (react! r)
       (check-true (last? O))
       (check-equal? (last O) (add1 i))))))
-   
-            
