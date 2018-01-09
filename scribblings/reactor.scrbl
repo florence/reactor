@@ -6,6 +6,10 @@
 
 @(define evil (make-base-eval '(require reactor)))
 
+
+
+@bold{Warning:} This API is unstable, and may change without warning.
+
 @title{Reactor: a synchronous reactive language}
 @defmodule[reactor]
 
