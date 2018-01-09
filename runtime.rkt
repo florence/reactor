@@ -396,7 +396,7 @@
         (activate!
          (continue-at
           (lambda ()
-            (define x (t))
+            (define x (call-with-control-safety t ct))
             (set! counter (- counter 1))
             (set-box! cell x)
             (when (zero? counter)
