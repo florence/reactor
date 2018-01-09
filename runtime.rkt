@@ -18,9 +18,7 @@
          reactor-suspended?
          %%
          activate-suspends!
-         extend-with-parameterization
          continue-at
-         call-with-control-safety
          with-handler-pred)
 (require "data.rkt"
          (for-syntax syntax/parse)
@@ -45,7 +43,7 @@
      #'(begin
          (unless (continuation-prompt-available? reactive-tag)
            (raise-process-escape-error))
-         (call/cc (lambda (k) body ...) reactive-tag))]))
+         ((call/cc (lambda (k) (lambda () body ...)) reactive-tag)))]))
 
 (define (raise-process-escape-error)
   (error "process escaped reactor context"))
@@ -86,7 +84,7 @@
     (set-reactor-active! g (rest active))
     (%%
      k
-     (set-reactor-os! g (lambda () (k (void))))
+     (set-reactor-os! g (lambda () (k void)))
      (parameterize ([the-current-reactor g])
        (next)))
     (sched! g)))
@@ -291,19 +289,19 @@
    (cons v (value-signal-collection S)))
   (register-signal-emission! S))
 
-(define current-exn-handler (make-parameter values))
+;(define current-exn-handler (make-parameter values))
 (define (with-handler-pred pred s f ct)
-  (define pxh (current-exn-handler))
-  (parameterize ([current-exn-handler
-                  (lambda (exn)
-                    (cond
-                      [(pred exn)
-                       =>
-                       (lambda (v)
-                         (emit-value s (list v exn))
-                         (switch!))]
-                      [else (pxh exn)]))])
-    (call-with-control-safety f ct)))
+  (call-with-exception-handler
+   (lambda (exn)
+     (cond
+       [(pred exn)
+        =>
+        (lambda (v)
+          (emit-value s (list v exn))
+          (switch!))]
+       [else exn]))
+   (lambda ()
+     (call-with-control-safety f ct))))
 
 ;; Signal -> Void
 ;; Unblock every thread waiting on S using its `present` continuation
@@ -363,7 +361,7 @@
 (define (pausef ct)
   (%%
    k
-   (run-next! ct (lambda () (k (void))))
+   (run-next! ct (lambda () (k void)))
    (switch!)))
 
 ;; ControlTree Signal (-> Any) (-> Any) -> Any
@@ -397,15 +395,16 @@
             [cell (in-list cells)])
         (activate!
          (continue-at
-          t
-          (lambda (x)
+          (lambda ()
+            (define x (t))
             (set! counter (- counter 1))
             (set-box! cell x)
             (when (zero? counter)
-              (activate! (lambda () (k (map unbox cells)))))
+              (activate! (lambda () (k (lambda () (map unbox cells))))))
             (switch!))
+          k
           ct)))
-     (switch!)))
+      (switch!)))
 
 (define emitf
   (case-lambda
@@ -413,30 +412,11 @@
     [(S v) (emit-value S v)]))
 
 
-;; (-> A) (A -> Nothing) ControlTree -> (-> Nothing)
+;; (-> A) ((-> A) -> Nothing) ControlTree -> (-> Nothing)
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k ct)
-  (extend-with-parameterization
-   (lambda () (k (call-with-control-safety f ct)))))
-
-;; (any ... -> any) -> (any ... -> any)
-;; gives a function like f, but that sees
-;; the current parameterization.
-(define (extend-with-parameterization f)
-  (define pz (current-parameterization))
-  (lambda a
-    (call-with-parameterization
-     pz
-     (lambda () (apply f a)))))
-
-(module+ test
-  (define p (make-parameter #f))
-  (define f
-    (parameterize ([p #t])
-      (extend-with-parameterization
-       (lambda () (p)))))
-  (check-true (f)))
+   (lambda () (k f)))
 
 ;; (-> Any) ControlTree -> Any
 ;; call F with continuation barrier and the reactor exn handler
@@ -444,5 +424,5 @@
   (call-with-exception-handler
    (lambda (exn)
      (run-next! ct (lambda () (pausef ct)))
-     ((current-exn-handler) exn))
+     exn)
    f))

@@ -90,14 +90,14 @@
 (define-syntax/in-process suspend&
   (syntax-parser
     [(suspend& e:expr ... #:unless S)
-     #`(%% k
-           (let ([nt (make-suspend-unless empty empty S)])
-             (with-extended-control
-              (lambda ()
+     #`(let ([nt (make-suspend-unless empty empty S)])
+         (with-extended-control
+          (lambda ()
+            (%% k
                 (run-next! nt (continue-at (lambda () e ...) k nt))
                 (activate-suspends! nt)
-                (switch!))
-              nt)))]))
+                (switch!)))
+          nt))]))
 (define-syntax/in-process abort&
   (syntax-parser
     [(abort& e:expr ... #:after S)
@@ -117,18 +117,17 @@
            (lambda () e ...)
            (make-preempt-when
             empty empty S
-            (extend-with-parameterization
              (lambda ()
                (match (last S)
                  [pattern (continue-at (lambda () body ...) k ct)] ...
-                 [_ #f])))))))]))
+                 [_ #f]))))))]))
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
 (define (with-extended-control body new-tree)
   (add-new-control-tree! (current-control-tree) new-tree)
   (parameterize ([current-control-tree new-tree])
-    (call-with-control-safety body (current-control-tree))))
+    (body)))
 
 (define-syntax/in-process await&
   (syntax-parser
