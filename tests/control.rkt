@@ -211,7 +211,7 @@
    (react! r)
    (check-false (last? O)))
 
-  (test-begin
+
    (test-begin
     (define-signal S 0 #:gather +)
     (define-signal O 0 #:gather +)
@@ -220,4 +220,28 @@
       (react! r (list S i))
       (react! r)
       (check-true (last? O))
-      (check-equal? (last O) (add1 i))))))
+      (check-equal? (last O) (add1 i))))
+
+  (test-begin
+   (define-signal O #f #:gather values)
+   (define-signal abt #f #:gather values)
+   (define-signal run)
+   (define r
+     (prime
+      (process
+       (suspend&
+        (abort& 
+         (par& (emit& O "hi") (emit& abt "bye")) pause&
+         #:after abt
+         [str (emit& O str)])
+        #:unless run))))
+   (react! r)
+   (check-false (last? O))
+   (react! r run)
+   (check-true (last? O))
+   (check-equal? (last O) "hi")
+   (react! r)
+   (check-false (last? O))
+   (react! r run)
+   (check-true (last? O))
+   (check-equal? (last O) "bye")))

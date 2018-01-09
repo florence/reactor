@@ -102,7 +102,6 @@
     (let ([new-susps (make-hasheq)])
       (add-suspends! new-susps (get-top-level-susps ct))
       new-susps))
-  
 
   (reset-reactor-signals! g)
   
@@ -113,8 +112,6 @@
   (set-reactor-blocked! g (make-hasheq))
   
   (set-reactor-susps! g new-susps))
-
-
 
 ;; ControlTree -> (listof RThread)
 ;; get any threads that should start active in the next instant
@@ -142,16 +139,18 @@
        (cond
          [(and (last? signal) (g))
           =>
-          (lambda (k) (values (cons k t) #f))]
+          (lambda (k)
+            (values (cons k t) #f))]
          [else
           (values (append threads t)
-                  (if (and (empty? threads) (empty? child)) #f ct))])]
+                  (if (and (empty? threads) (empty? t) (empty? child)) #f ct))])]
       [(suspend-unless children threads signal)
        #:when (last? signal)
        (define-values (t child) (rec children))
        (set-control-tree-next! ct (append t threads))
        (set-control-tree-children! ct child)
-       (values empty (if (and (empty? threads) (empty? child)) #f ct))]
+       (values empty
+               (if (and (empty? threads) (empty? t) (empty? child)) #f ct))]
       [(suspend-unless _ _ _) (values empty ct)]))
   ;; ---- IN ----
   (define-values (threads _) (get-next-active/filter! ct))
@@ -292,7 +291,7 @@
    (cons v (value-signal-collection S)))
   (register-signal-emission! S))
 
-(define current-exn-handler (make-parameter raise))
+(define current-exn-handler (make-parameter values))
 (define (with-handler-pred pred s f ct)
   (define pxh (current-exn-handler))
   (parameterize ([current-exn-handler
