@@ -34,8 +34,6 @@
 
 (define the-current-reactor (make-parameter #f))
 (define reactive-tag  (make-continuation-prompt-tag 'reaction))
-(define error-tag (make-continuation-prompt-tag 'reactor-error))
-
 (define (current-reactor)
   (define r (the-current-reactor))
   (unless r
@@ -69,10 +67,7 @@
           [a (emit-pure a)])))
     (sched! grp))
   (call-with-continuation-barrier
-   (lambda ()
-     (call/prompt
-      (lambda () (call/prompt start reactive-tag))
-      error-tag raise)))
+   (lambda () (call/prompt start reactive-tag)))
   (cleanup! grp)
   (reactor-safe! r grp))
 
@@ -303,15 +298,13 @@
   (parameterize ([current-exn-handler
                   (lambda (exn)
                     (cond
-                      [(f exn)
+                      [(pred exn)
                        =>
-                       (lambda (v) (emit-value s v) (switch!))]
+                       (lambda (v)
+                         (emit-value s (list v exn))
+                         (switch!))]
                       [else (pxh exn)]))])
-    (call/prompt
-     (lambda ()             
-       (call-with-control-safety f ct)))
-    error-tag
-    (lambda (exn) ((current-exn-handler) exn))))
+    (call-with-control-safety f ct)))
 
 ;; Signal -> Void
 ;; Unblock every thread waiting on S using its `present` continuation
@@ -451,6 +444,6 @@
 (define (call-with-control-safety f ct)
   (call-with-exception-handler
    (lambda (exn)
-     (run-next! (lambda () (pausef ct)))
-     (abort/cc error-tag exn))
+     (run-next! ct (lambda () (pausef ct)))
+     ((current-exn-handler) exn))
    f))

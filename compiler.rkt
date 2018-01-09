@@ -162,12 +162,12 @@
      (define/with-syntax (v ...)
        (for/list ([_ (in-list (syntax->list #'(p ...)))] [i (in-naturals)])
          i))
-     #'(signal& ([S #f #:gather values])
+     #'(signal* ([S #f #:gather values])
          (abort&
           (with-handler-pred
            (lambda (exn)
              (cond
-               [(h exn) v] ...))
+               [(p exn) v] ...))
            S
            (lambda () body ...)
            (current-control-tree))
