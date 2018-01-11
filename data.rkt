@@ -28,7 +28,7 @@
   (and (external-reactor-internal r) #t))
 
 ;; A Reactor is a
-;;  (reactor RThread (Listof Thread) (hasheqof Signal Blocked) ControlTree (hasheqof S SuspendUnless) (Listof Signal) boolean)
+;;  (reactor RThread (Listof Thread) (hasheqof SignalName Blocked) ControlTree (hasheqof SignalName SuspendUnless) (Listof Signal) boolean)
 (struct reactor (os active blocked ct susps signals)
   #:mutable)
 ;; `os` is the continuation for the OS loop
@@ -39,7 +39,13 @@
 ;; `signals` is a list of all signals in the program, that have been emitted
 ;;   they may be reset inbetween instants
 
-;; a RThread is a (-> Any), and is the continuation of a thread
+;; a RThread is a (make-rthread Continuation (-> Any))
+(struct rthread (k f)
+  #:authentic
+  #:constructor-name make-rthread)
+
+(define (run-rthread r)
+  ((rthread-k r) (rthread-f r)))
 
 ;; a process is a (make-process (ControlTree -> RThread))
 (struct process (thunk)
@@ -54,12 +60,11 @@
 ;; it will run `present` if the signal is present or add `absent` to the control tree if it's not.
 
 ;; a signal is a one of
-;; (make-value-signal boolean (make-signal-evt) A (listof A) (A A -> A))
-;; (make-pure-signal boolean (make-signal-evt))
+;; (make-value-signal boolean (make-signal-evt) uninterned-symbol A (listof A) (A A -> A))
+;; (make-pure-signal boolean uninterned-symbol (make-signal-evt))
 
-(struct signal ([status #:mutable] [last? #:mutable] evt)
-  #:property prop:evt (lambda (S) (wrap-evt (signal-evt S) (lambda (_) S)))
-  #:authentic)
+(struct signal ([status #:mutable] [last? #:mutable] name evt)
+  #:property prop:evt (lambda (S) (wrap-evt (signal-evt S) (lambda (_) S))))
 
 (define (make-signal-evt) (make-semaphore 0))
 (define (ready-signal! S)
@@ -67,22 +72,36 @@
   (semaphore-try-wait? e)
   (semaphore-post e))
 
+(define (signal=? s1 s2)
+  (eq? (signal-name s1) (signal-name s2)))
+
 (struct pure-signal signal ()
-  #:mutable
-  #:constructor-name make-pure-signal
-  #:authentic)
+  #:mutable)
 ;; `status` is false if the signal has not been emitted (is unknown), and true if it has
 
+(define (make-pure-signal name)
+  (pure-signal #f #f
+               (string->uninterned-symbol (symbol->string name))
+               (make-signal-evt)))
+                             
 (struct value-signal signal (value collection gather)
-  #:mutable
-  #:constructor-name make-value-signal
-  #:authentic)
+  #:mutable)
 ;; `status` is as in `pure-signal`
 ;; `value` is the value of the signal for this instant. It is equal to the result of
 ;;     `gather` in the last instant if the signal was emitted, or the value of the previous instant
 ;;         otherwise
 ;; `collection` is the list of values it has been emitted with this instant
 ;; `gather` turns collection into the new value between instants
+
+(define (make-value-signal name value collection gather)
+  (value-signal #f #f
+                (string->uninterned-symbol (symbol->string name))
+                (make-signal-evt)
+                value collection gather))
+
+
+(define (signal/c /c)
+  (struct/c value-signal any/c any/c any/c any/c /c any/c (-> /c /c /c)))
 
 ;; a ControlTree is one of:
 ;;   (make-top (listof ControlTree) (Listof RThread))

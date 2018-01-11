@@ -60,10 +60,10 @@
 (define-syntax define-signal
   (syntax-parser
     [(_ S:id)
-     #'(define S (make-pure-signal #f #f (make-signal-evt)))]
+     #'(define S (make-pure-signal 'S))]
     [(_ S:id default:expr #:gather gather:expr)
      #'(define S
-         (make-value-signal #f #f (make-signal-evt) default empty gather))]))
+         (make-value-signal 'S default empty gather))]))
 (define-syntax signal*
   (syntax-parser
     [(signal S:id e) #'(signal (S) e)]

@@ -19,7 +19,8 @@
          %%
          activate-suspends!
          continue-at
-         with-handler-pred)
+         with-handler-pred
+         reactor-continuation-marks)
 (require "data.rkt"
          (for-syntax syntax/parse)
          racket/control)
@@ -31,7 +32,7 @@
 ;;;;;; OS
 
 (define the-current-reactor (make-parameter #f))
-(define reactive-tag  (make-continuation-prompt-tag 'reaction))
+(define reactive-tag (make-continuation-prompt-tag 'reaction))
 (define (current-reactor)
   (define r (the-current-reactor))
   (unless r
@@ -50,7 +51,8 @@
 
 ;; Process -> ExternalReactor
 (define (prime proc)
-  (make-external-reactor (make-reactor (process-thunk proc))))
+  (make-external-reactor
+   (make-reactor (process-thunk proc))))
 
 ;; Reactor (Listof (or PureSignal (List ValueSignal Any))) -> Any
 ;; run a reaction on this reactor
@@ -73,7 +75,20 @@
 ;; make a reactor containing only the given thread, which is active
 (define (make-reactor proc)
   (define top-tree (make-top empty empty))
-  (reactor void (list (proc top-tree)) (make-hasheq) top-tree (make-hasheq) empty))
+  (define kont #f)
+  (call-with-continuation-barrier
+   (lambda ()
+     (call/prompt
+      (lambda ()
+        ((call-with-composable-continuation
+          (lambda (k)
+            (set! kont k)
+            void)
+          reactive-tag)))
+      reactive-tag)))
+  (define initial-thread
+    (make-rthread kont (proc top-tree)))
+  (reactor void (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty))
 
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
@@ -86,7 +101,7 @@
      k
      (set-reactor-os! g (lambda () (k void)))
      (parameterize ([the-current-reactor g])
-       (next)))
+       (run-rthread next)))
     (sched! g)))
 
 ;; reactor -> Void
@@ -168,7 +183,7 @@
 (define (reset-reactor-signals! g)
   (define signals (reactor-signals g))
   (set-reactor-signals! g empty)
-  (for ([S (in-list (remove-duplicates signals eq?))])
+  (for ([S (in-list (remove-duplicates signals signal=?))])
     (reset-signal! g S)))
 
 ;; Reactor Signal -> Void
@@ -307,10 +322,11 @@
 ;; Unblock every thread waiting on S using its `present` continuation
 ;; and awake every suspend-unless
 (define (unblock! S)
-  (unblock-threads! S)
-  (unblock-suspends! S))
+  (define name (signal-name S))
+  (unblock-threads! name)
+  (unblock-suspends! name))
 
-;; Signal -> Void
+;; SignalName -> Void
 ;; Effect: unblock any threads waiting on this signal
 (define (unblock-threads! S)
   (define grp (current-reactor))
@@ -322,7 +338,7 @@
    (append (reactor-active grp)
            (map blocked-present unblocked))))
 
-;; Signal -> Void
+;; SignalName -> Void
 ;; Effect: Unblock all suspensions waiting for this signal.
 (define (unblock-suspends! S)
   (define susps (reactor-susps (current-reactor)))
@@ -351,7 +367,7 @@
   (for ([sp (in-list new-sp)])
     (add-suspend! susps sp)))
 (define (add-suspend! susps sp)
-  (define S (suspend-unless-signal sp))
+  (define S (signal-name (suspend-unless-signal sp)))
   (hash-set! susps
              S
              (cons sp (hash-ref susps S empty))))
@@ -361,7 +377,7 @@
 (define (pausef ct)
   (%%
    k
-   (run-next! ct (lambda () (k void)))
+   (run-next! ct (continue-at void k ct))
    (switch!)))
 
 ;; ControlTree Signal (-> Any) (-> Any) -> Any
@@ -374,10 +390,10 @@
      (%%
       k
       (hash-set! blocked
-                 S
+                 (signal-name S)
                  (cons
                   (make-blocked ct (continue-at p k ct) (continue-at q k ct))
-                  (hash-ref blocked S empty)))
+                  (hash-ref blocked (signal-name S) empty)))
       (switch!))]))
 
 
@@ -400,7 +416,7 @@
             (set! counter (- counter 1))
             (set-box! cell x)
             (when (zero? counter)
-              (activate! (lambda () (k (lambda () (map unbox cells))))))
+              (activate! (continue-at (lambda () (map unbox cells)) k ct )))
             (switch!))
           k
           ct)))
@@ -412,17 +428,58 @@
     [(S v) (emit-value S v)]))
 
 
-;; (-> A) ((-> A) -> Nothing) ControlTree -> (-> Nothing)
+;                                                                                                                       
+;                                                                                                                       
+;                                                                                                                       
+;                                                                                                                       
+;                                          ;;                                           ;;                              
+;       ;;;                      ;;        ;;                                 ;;        ;;                              
+;     ;;;;;                      ;;        ;;                                 ;;        ;;                              
+;    ;;        ;;;    ;; ;;;   ;;;;;;;  ;;;;;    ;; ;;;   ;;   ;;   ;;;     ;;;;;;;  ;;;;;      ;;;    ;; ;;;     ;;;;  
+;   ;;        ;;;;;   ;;;;;;;  ;;;;;;;  ;;;;;    ;;;;;;;  ;;   ;;   ;;;;;   ;;;;;;;  ;;;;;     ;;;;;   ;;;;;;;   ;;;;;; 
+;   ;;       ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;       ;;    ;;        ;;    ;;   ;;  ;;   ;;  ;;      
+;   ;;       ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;     ;;;;    ;;        ;;    ;;   ;;  ;;   ;;   ;;;    
+;   ;;       ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;   ;;;;;;    ;;        ;;    ;;   ;;  ;;   ;;     ;;;  
+;    ;;      ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;       ;; 
+;    ;;;;;;   ;;;;;   ;;   ;;    ;;;;;  ;;;;;;;; ;;   ;;  ;;;;;;;  ;;;;;;;    ;;;;;  ;;;;;;;;  ;;;;;   ;;   ;;  ;;;;;;  
+;      ;;;;    ;;;    ;;   ;;      ;;;  ;;;;;;;; ;;   ;;   ;;; ;;   ;;; ;;      ;;;  ;;;;;;;;   ;;;    ;;   ;;  ;;;;;   
+;                                                                                                                       
+;                                                                                                                       
+;                                                                                                                       
+;                                                                                                                       
+;                                                                                                                       
+
+
+
+;; (-> A) ((-> A) -> Nothing) ControlTree -> RThread
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k ct)
-   (lambda () (k f)))
+   (make-rthread k f))
 
 ;; (-> Any) ControlTree -> Any
 ;; call F with continuation barrier and the reactor exn handler
 (define (call-with-control-safety f ct)
   (call-with-exception-handler
    (lambda (exn)
-     (run-next! ct (lambda () (pausef ct)))
+     (%% k
+         (run-next! ct (continue-at (lambda () (pausef ct)) k ct)))
      exn)
    f))
+
+;; safe-reactor -> (listof continuation-mark-set)
+(define (reactor-continuation-marks r)
+  (for/list ([r (all-threads r)])
+    (continuation-marks (rthread-k r) reactive-tag)))
+
+;; safe-reactor -> (listof rthread)
+(define (all-threads r*)
+  (define r (external-reactor-internal r*))
+  (append (reactor-active r)
+          (flatten-control-tree (reactor-ct r))))
+
+(define (flatten-control-tree ct)
+  (apply append
+         (control-tree-next ct)
+         (map flatten-control-tree
+              (control-tree-children ct))))

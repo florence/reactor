@@ -218,4 +218,21 @@
    (define r
      (prime (process (set! f (lambda () (present& S 1 2))))))
    (react! r)
-   (check-exn #rx"process escaped reactor context" f)))
+   (check-exn #rx"process escaped reactor context" f))
+
+
+  (test-begin
+   (define-signal S 0 #:gather +)
+   (define/contract (test S)
+     (-> (signal/c number?) process?)
+     (process (emit& S 'a)))
+   (check-exn
+    #rx"test: broke its own contract"
+    (lambda () (react! (prime (test S))))))
+  (test-begin
+   (define-signal S 0 #:gather +)
+   (define/contract (test S)
+     (-> (signal/c number?) process?)
+     (process (emit& S 2)))
+   (check-not-exn
+    (lambda () (react! (prime (test S)))))))

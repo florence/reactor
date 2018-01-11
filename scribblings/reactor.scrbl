@@ -383,6 +383,29 @@ It is never safe to share a signal between two reactors.
 
 }
 
+@defproc[(signal/c [c contract?]) contract]{
+
+ Creates a contract for value signals that contain @racket[c].
+
+}
+
+@defproc[(signal=? [s1 signal?] [s2 signal?]) boolean?]{
+
+ Are these the same signal? True if emitting either signal
+ would cause the other signal to be present.
+
+}
+
+@defproc[(signal-name [s signal?])
+         (and/c symbol? (not/c symbol-interned?))]{
+
+ Gets a symbol who's string value is the name this signal
+ was first created with, and which is @racket[eq?] to the
+ @racket[signal-name] of another signal only if the two
+ signals are @racket[signal=?].
+                                                   
+}
+
 @defproc[(reactor? [r any]) boolean?]{
 
  Is @racket[r] a reactor?
@@ -419,6 +442,13 @@ It is never safe to share a signal between two reactors.
  See @secref["r&t"] for unstable behavior of this function.
 
                                                 
+}
+
+@defproc[(reactor-continuation-marks [r (and/c reactor? reactor-safe?)])
+         (listof continuation-mark-set?)]{
+
+ Gets the continuation marks for every running process in the reactor.
+
 }
 
 @section{Caveats and unstable API's}

@@ -12,6 +12,12 @@
   [last (-> value-signal? any/c)]
   [last? (-> signal? any)]
   [reactor-safe? (-> external-reactor? any/c)]
+  [signal-name (-> signal? (and/c symbol? (not/c symbol-interned?)))]
+  [signal=? (-> signal? signal? any/c)]
+  [reactor-continuation-marks
+   (-> (and/c external-reactor? reactor-safe?)
+       (listof continuation-mark-set?))]
+  [signal/c (-> contract? contract?)]
   ;; running
   [prime (-> process? external-reactor?)]
   [react! (-> (and/c external-reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
@@ -33,4 +39,5 @@
  halt&
  with-handlers&)
 (require "data.rkt" "runtime.rkt" "compiler.rkt")
+
 
