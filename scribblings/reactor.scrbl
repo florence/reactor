@@ -194,14 +194,20 @@ within a Reactor, and between a reactor and its environment.
 It is never safe to share a signal between two reactors.
 
 @defform*[((define-signal S)
+           (define-signal S default)
            (define-signal S default #:gather gather))]{
 
  Defines a new signal. The first variant defines a pure
- signal, with no value. The second variant defines a value-carrying signal.
- The default value on the signal will be @racket[default]. Multiple emissions
- of the signal will be combined with @racket[gather] which should be a
- associative procedure of two arguments. The value emitted on a signal can only
- be observe in the next instant.
+ signal, with no value. The second and third variants define
+ a value-carrying signal. The default value on the signal
+ will be @racket[default]. Multiple emissions of the signal
+ will be combined with @racket[gather] which should be a
+ associative procedure of two arguments. If no gather
+ function is provided an error is raised if the signal is
+ emitted twice in the same instant. The value emitted on a
+ signal can only be observe in the next instant.
+
+ 
                                                      
 }
 

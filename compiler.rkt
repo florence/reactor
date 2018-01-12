@@ -35,15 +35,15 @@
   (syntax-parser
     [(_ e:expr)
      #`(runf e (current-control-tree))]))
-  (define-syntax process*
-    (syntax-parser
-      [(_ e ...)
-       #'(make-process
-          (lambda (tree)
-            (lambda ()
-              (parameterize ([current-control-tree tree])
-                (syntax-parameterize ([in-process? #t])
-                  e ...)))))]))
+(define-syntax process*
+  (syntax-parser
+    [(_ e ...)
+     #'(make-process
+        (lambda (tree)
+          (lambda ()
+            (parameterize ([current-control-tree tree])
+              (syntax-parameterize ([in-process? #t])
+                e ...)))))]))
 (define-syntax define-process
   (syntax-parser
     [(_ name:id body ...)
@@ -57,10 +57,14 @@
     [(present& S p q)
      #'(presentf (current-control-tree) S (lambda () p) (lambda () q))]))
 
+(define (raise-signal-error a b)
+  (error 'emit& "attempted to emit a value signal with no gather function twice: ~v ~v" a b))
 (define-syntax define-signal
   (syntax-parser
     [(_ S:id)
      #'(define S (make-pure-signal 'S))]
+    [(_ S:id default:expr)
+     #'(define-signal S default #:gather raise-signal-error)]
     [(_ S:id default:expr #:gather gather:expr)
      #'(define S
          (make-value-signal 'S default empty gather))]))
@@ -121,6 +125,23 @@
                (match (last S)
                  [pattern (continue-at (lambda () body ...) k ct)] ...
                  [_ #f]))))))]))
+
+
+(define-syntax/in-process control&
+  (syntax-parser
+    [(control e ... #:on S)
+     #'(signal*
+        (ctrl end)
+        (abort&
+         (par&
+          (suspend& e ... (emit& end) #:unless ctrl)
+          (let loop/await ()
+            (await& S)
+            (let loop/emit ()
+              (emit& S)
+              (present& S (begin pause& loop/await) (loop/emit)))))
+         #:after end))]))
+               
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
