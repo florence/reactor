@@ -15,6 +15,9 @@
   [queue-emission!
    (-> (and/c external-reactor? reactor-ignited?)
        (or/c pure-signal? (list/c value-signal? any/c)) ... any)]
+  [queue-single-emission!
+   (-> (and/c external-reactor? reactor-ignited?)
+       (or/c pure-signal? (list/c value-signal? any/c)) ... any)]
   [bind-signal
    (-> (and/c external-reactor? reactor-ignited?) signal? evt? evt?)]))
 
@@ -45,6 +48,7 @@
       (match (f)
         ['shutdown! (void)]
         [#f (do-reaction! empty)]
+        [`(cut ,e) (do-reaction! (append e (get-messages)))]
         [e (do-reaction! (append e (get-messages)))]))
     (define (do-reaction! messages)
       (apply react! r messages)
@@ -53,6 +57,8 @@
       (let loop ([acc empty])
         (match (thread-try-receive)
           [#f acc]
+          [`(cut ,e)
+           (append e acc)]
           ['shutdown!
            (set! shutdown? #t)
            acc]
@@ -82,6 +88,12 @@
   (thread-send
    (ignition-control-thread (hash-ref ignition-threads r))
    v #f))
+
+(define (queue-single-emission! r . v)
+  (thread-send
+   (ignition-control-thread (hash-ref ignition-threads r))
+   `(cut ,v)
+   #f))
 
 (define (bind-signal r s evt)
   (define ic (hash-ref ignition-threads r))

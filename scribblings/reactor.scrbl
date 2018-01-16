@@ -539,8 +539,18 @@ Bindings for automatically running reactions
 
  Queue a reaction in this reactor, with the given signals
  emitted. If this function is called multiple times before
- the queued reaction runs, all the given @racket[emissions]
+ the queued reaction runs, all the given emissions
  occur in the next instant.
+ 
+}
+
+@defproc[(queue-single-emission!
+          [r (and/c reactor? reactor-ignited?)]
+          [emissions (or/c pure-signal? (list/c value-signal? any/c))] ...)
+         any]{
+
+ Like @racket[queue-emission!] but forces any subsequent
+ queued emissions to run in the next instant.
  
 }
 
