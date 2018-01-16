@@ -57,14 +57,15 @@
     [(present& S p q)
      #'(presentf (current-control-tree) S (lambda () p) (lambda () q))]))
 
-(define (raise-signal-error a b)
-  (error 'emit& "attempted to emit a value signal with no gather function twice: ~v ~v" a b))
+(define ((raise-signal-error s) a b)
+  (error 'emit& "attempted to emit a value signal with no gather function twice: ~a ~v ~v"
+         s a b))
 (define-syntax define-signal
   (syntax-parser
     [(_ S:id)
      #'(define S (make-pure-signal 'S))]
     [(_ S:id default:expr)
-     #'(define-signal S default #:gather raise-signal-error)]
+     #'(define-signal S default #:gather (raise-signal-error 'S))]
     [(_ S:id default:expr #:gather gather:expr)
      #'(define S
          (make-value-signal 'S default empty gather))]))
