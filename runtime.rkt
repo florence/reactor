@@ -475,9 +475,9 @@
 ;; safe-reactor -> (listof rthread)
 (define (all-threads r*)
   (define r (external-reactor-internal r*))
-  (append* (reactor-active r)
-           (flatten-control-tree (reactor-ct r))
-           (map flatten-control-tree (apply append (hash-values (reactor-susps r))))))
+  (flatten
+   (cons (reactor-active r)
+         (flatten-control-tree (reactor-ct r)))))
 
 (define (flatten-control-tree ct)
   (apply append

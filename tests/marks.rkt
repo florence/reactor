@@ -2,6 +2,7 @@
 (require reactor)
 (module+ test
   (require rackunit)
+  
   (test-begin
    (define r
      (prime
@@ -11,6 +12,7 @@
    (define l (reactor-continuation-marks r))
    (check-equal? (rest l) empty)
    (check-equal? (continuation-mark-set->list (first l) 1) (list 2)))
+  
   (test-begin
    (define r
      (prime
@@ -26,5 +28,19 @@
     (list->set
      (map (lambda (x) (continuation-mark-set->list x 1))
           l))
-    (set (list 2 1) (list 3 1)))))
+    (set (list 2 1) (list 3 1))))
+
+ 
+  (test-begin
+   (define-signal R)
+   (define r
+     (prime
+      (process
+       (abort&
+        (par& 1 2)
+        halt&
+        #:after R))))
+   (react! r)
+   (check-equal? (length (reactor-continuation-marks r))
+                 1)))
       
