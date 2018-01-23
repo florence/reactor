@@ -7,8 +7,9 @@
    (define r
      (prime
       (process
-       (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-         (error "hi")))))
+       (with-handlers& 
+        (error "hi")
+        #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
    (react! r)
    (check-false (last? O))
    (react! r)
@@ -22,8 +23,10 @@
       (process
        (emit&
         O
-        (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-          1)))))
+        (with-handlers& 
+         1
+         #:after-error
+         [void (lambda (e) (emit& O (exn-message e)))])))))
    (react! r)
    (check-true (last? O))
    (check-equal? (last O) 1))
@@ -35,8 +38,9 @@
       (process
        (emit&
         O
-        (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-          pause& 1)))))
+        (with-handlers& 
+         pause& 1
+         #:after-error [void (lambda (e) (emit& O (exn-message e)))])))))
    (react! r)
    (check-false (last? O))
    (react! r)
@@ -48,8 +52,9 @@
    (define r
      (prime
       (process
-       (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-         pause& (error "hi")))))
+       (with-handlers& 
+        pause& (error "hi")
+        #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
    (react! r)
    (check-false (last? O))
    (react! r)
@@ -63,8 +68,9 @@
    (define r
      (prime
       (process
-       (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-         (par& (emit& O "hi") (error "bye"))))))
+       (with-handlers& 
+        (par& (emit& O "hi") (error "bye"))
+        #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
    (react! r)
    (check-true (last? O))
    (check-equal? (last O) "hi")
@@ -80,10 +86,11 @@
    (define r
      (prime
       (process
-       (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-         (suspend&
-          (par& (emit& O "hi") (error "bye"))
-          #:unless run)))))
+       (with-handlers& 
+        (suspend&
+         (par& (emit& O "hi") (error "bye"))
+         #:unless run)
+        #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
    (react! r)
    (check-false (last? O))
    (react! r run)
@@ -100,8 +107,9 @@
      (prime
       (process
        (suspend&
-        (with-handlers& ([void (lambda (e) (emit& O (exn-message e)))])
-          (par& (emit& O "hi") (error "bye")))
+        (with-handlers& 
+         (par& (emit& O "hi") (error "bye"))
+         #:after-error [void (lambda (e) (emit& O (exn-message e)))])
         #:unless run))))
    (react! r)
    (check-false (last? O))

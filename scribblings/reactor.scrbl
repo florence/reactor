@@ -359,7 +359,7 @@ It is never safe to share a signal between two reactors.
 }
 
 
-@defform[(with-handlers& ([a b] ...) body ...)]{
+@defform[(with-handlers& body ... #:after-error [a b] ...)]{
 
  Like @racket[with-handlers], but that works with reactive
  machines. Specifically, whenever a raised exception is

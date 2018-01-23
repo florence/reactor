@@ -179,7 +179,7 @@
 
 (define-syntax/in-process with-handlers&
   (syntax-parser
-    [(with-handlers& ([p:expr h:expr] ...) body:expr ...)
+    [(with-handlers& body:expr ... #:after-error [p:expr h:expr] ...)
      (define/with-syntax (v ...)
        (for/list ([_ (in-list (syntax->list #'(p ...)))] [i (in-naturals)])
          i))
