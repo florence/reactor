@@ -202,12 +202,12 @@
   (suspend& (void) #:unless S))
 
 (define-process (await S)
-  (begin (run& (await-immediate S)) pause&))
+  (begin pause& (run& (await-immediate S))))
 
 ;; ValueSignal (Any -> Any) -> Process
 ;; Await a value for the signal S, and give it to `f`
 ;; when ready
 (define-process (await-value S f)
-  (suspend& (void) #:unless S)
+  (await& #:immediate S)
   pause&
   (f (last S)))

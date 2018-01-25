@@ -112,11 +112,11 @@
       (process
        (await& I)
        (emit& O))))
-   (react! r)
-   (check-false (last? O))
    (react! r I)
    (check-false (last? O))
    (react! r)
+   (check-false (last? O))
+   (react! r I)
    (check-true (last? O)))
 
   (test-begin
