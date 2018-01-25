@@ -120,4 +120,62 @@
    (check-false (last? O))
    (react! r run)
    (check-true (last? O))
-   (check-equal? (last O) "bye")))
+   (check-equal? (last O) "bye"))
+
+  
+  (test-begin
+   (define-signal disable)
+   (define-signal enable)
+   (define-signal enable-run)
+   (define-signal disable-run)
+   (define-signal inputs-changed)
+   (define-signal inputs-changed-to "")
+   (define-signal error)
+   (define-process input-handling
+     (par&
+      (loop& (await& #:immediate inputs-changed) (emit& disable-run) pause&)
+      (loop&
+       (await& #:immediate inputs-changed-to)
+       (emit& disable)
+       (await& inputs-changed-to
+         [str
+          (with-handlers&
+           (read (open-input-string str))
+           (emit& enable-run)
+           #:after-error [exn:fail? (lambda (x) (emit& error))])])
+       (emit& enable))))
+
+   (define r (prime input-handling))
+
+   (react! r inputs-changed)
+   (check-true (last? disable-run))
+   (react! r (list inputs-changed-to "("))
+   (check-true (last? disable))
+   (react! r)
+   (react! r)
+   (check-true (last? error))
+   (check-true (last? enable)))
+
+  (test-begin
+   (define-signal S "")
+   (define-signal O "")
+   (define r
+     (prime
+      (process
+       (par&
+        (await& S
+          [v
+           (with-handlers&
+            (error 'hi)
+            #:after-error [void (lambda (_) (emit& O ""))])])
+        (loop&
+         (await& O
+           [v (void)]))))))
+   (react! r (list S ""))
+   (check-false (reactor-done? r))
+   (check-false (reactor-suspended? r))
+   (react! r)
+   (check-false (reactor-done? r))
+   (check-false (reactor-suspended? r))))
+   
+   
