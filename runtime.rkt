@@ -312,7 +312,7 @@
        [(pred exn)
         =>
         (lambda (v)
-          (emit-value s (list v exn))
+          (emit-value s (list (list v exn)))
           (switch!))]
        [else exn]))
    (lambda ()

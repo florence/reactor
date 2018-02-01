@@ -367,6 +367,11 @@ It is never safe to share a signal between two reactors.
  abort, with body being aborted at the end of the current instant, and the
  corresponding handler is run in the next instant.
 
+ If multiple errors are raised in the same instant they're
+ handlers are run in parallel, and the result of each thread
+ is collected into a list (as with @racket[par&]). The order
+ of the list is not specified.
+
 }
 
 @section{Data}

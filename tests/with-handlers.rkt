@@ -176,6 +176,20 @@
    (check-false (reactor-suspended? r))
    (react! r)
    (check-false (reactor-done? r))
-   (check-false (reactor-suspended? r))))
+   (check-false (reactor-suspended? r)))
+
+  (test-begin
+   (define-signal O (seteq) #:gather set-union)
+   (define r
+     (prime
+      (process
+       (with-handlers&
+        (par& (raise "a") (raise "b"))
+        #:after-error [(lambda (_) #t) (lambda (e) (emit& O (set e)))]))))
+   (react! r)
+   (check-false (last? O))
+   (react! r)
+   (check-true (last? O))
+   (check-equal? (last O) (set "a" "b"))))
    
    

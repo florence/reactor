@@ -183,7 +183,7 @@
      (define/with-syntax (v ...)
        (for/list ([_ (in-list (syntax->list #'(p ...)))] [i (in-naturals)])
          i))
-     #'(signal* ([S #f #:gather values])
+     #'(signal* ([S empty #:gather append])
          (abort&
           (with-handler-pred
            (lambda (exn)
@@ -193,7 +193,15 @@
            (lambda () body ...)
            (current-control-tree))
           #:after S
-          [(list v exn) (h exn)] ...))]))
+          [vals
+           (let loop ([a vals])
+             (match a
+               [(list) empty]
+               [(cons (list n exn) r)
+                (par&
+                 (cond
+                   [(= n v) (h exn)] ...)
+                 (loop r))]))]))]))
                      
 
 ;; Signal -> Process
