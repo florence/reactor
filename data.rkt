@@ -1,35 +1,16 @@
 #lang racket
 (provide (all-defined-out))
 
-;; An ExternalReactor is a (make-external-reactor Reactor)
-;; it causes the reactor to be thread local
-(struct external-reactor (cell))
-
-;; Reactor -> ExternalReactor
-(define (make-external-reactor r)
-  (define cell (make-thread-cell #f))
-  (thread-cell-set! cell r)
-  (external-reactor cell))
-;; ExternalReactor -> Reactor or #f
-;; returns the internal reactor if it is safe
-(define (external-reactor-internal r)
-  (thread-cell-ref (external-reactor-cell r)))
 ;; ExternalReactor -> Void
 (define (reactor-unsafe! r)
-  (inject! r #f))
-;; ExternalReactor InternalReactor -> Void
-(define (reactor-safe! r grp)
-  (inject! r grp))
-;; ExternalReactor (or Reactor #f) -> ExternalReactor
-(define (inject! er r)
-  (thread-cell-set! (external-reactor-cell er) r))
-;; ExternalReactor -> Boolean
-(define (reactor-safe? r)
-  (and (external-reactor-internal r) #t))
+  (set-reactor-safe?! r #f))
+;; ExternalReactor -> Void
+(define (reactor-safe! r)
+  (set-reactor-safe?! r #t))
 
 ;; A Reactor is a
 ;;  (reactor RThread (Listof Thread) (hasheqof SignalName Blocked) ControlTree (hasheqof SignalName SuspendUnless) (Listof Signal) boolean)
-(struct reactor (os active blocked ct susps signals)
+(struct reactor (os active blocked ct susps signals safe?)
   #:mutable)
 ;; `os` is the continuation for the OS loop
 ;; `active` are a list of runnable threads
@@ -38,6 +19,7 @@
 ;; `susps` is active suspensions, keys on their blocking signal
 ;; `signals` is a list of all signals in the program, that have been emitted
 ;;   they may be reset inbetween instants
+;; `safe?` is if the reactor is safe to react with
 
 ;; a RThread is a (make-rthread Continuation (-> Any))
 (struct rthread (k f)

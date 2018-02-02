@@ -49,16 +49,14 @@
 (define (raise-process-escape-error)
   (error "process escaped reactor context"))
 
-;; Process -> ExternalReactor
+;; Process -> Reactor
 (define (prime proc)
-  (make-external-reactor
-   (make-reactor (process-thunk proc))))
+  (make-reactor (process-thunk proc)))
 
 ;; Reactor (Listof (or PureSignal (List ValueSignal Any))) -> Any
 ;; run a reaction on this reactor
-(define (react! r . signals)
-  (define grp (external-reactor-internal r))
-  (reactor-unsafe! r)
+(define (react! grp . signals)
+  (reactor-unsafe! grp)
   (define (start)
     (parameterize ([the-current-reactor grp])
       (for ([i (in-list signals)])
@@ -69,7 +67,7 @@
   (call-with-continuation-barrier
    (lambda () (call/prompt start reactive-tag)))
   (cleanup! grp)
-  (reactor-safe! r grp))
+  (reactor-safe! grp))
 
 ;; (-> Any) -> Reactor
 ;; make a reactor containing only the given thread, which is active
@@ -88,13 +86,13 @@
       reactive-tag)))
   (define initial-thread
     (make-rthread kont (proc top-tree)))
-  (reactor void (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty))
+  (reactor void (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty #t))
 
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
 (define (sched! g)
   (unless (ireactor-suspended? g)
-    (match-define (reactor os active blocked ct susps signals) g)
+    (match-define (reactor os active blocked ct susps signals safe?) g)
     (define next (first active))
     (set-reactor-active! g (rest active))
     (%%
@@ -107,7 +105,7 @@
 ;; reactor -> Void
 ;; should not be called within a `reactive-tag`.
 (define (cleanup! g)
-  (match-define (reactor os active blocked ct susps signals) g)
+  (match-define (reactor os active blocked ct susps signals safe?) g)
   (for* ([(_ procs) (in-hash blocked)]
          [b (in-list procs)])
     (run-next! (blocked-ct b) (blocked-absent b)))
@@ -215,10 +213,9 @@
    (cons S (reactor-signals (current-reactor))))
   (unblock! S))
 
-;; ExternalReactor -> Boolean
+;; Reactor -> Boolean
 ;; does this reactor have no active threads, but have suspened threads?
-(define (reactor-suspended? g)
-  (define r (external-reactor-internal g))
+(define (reactor-suspended? r)
   (and (ireactor-suspended? r)
        (not (hash-empty? (reactor-susps r)))))
 
@@ -227,10 +224,9 @@
 (define (ireactor-suspended? g)
   (empty? (reactor-active g)))
 
-;; ExternalReactor -> Boolean
+;; Reactor -> Boolean
 ;; does this reactor have active threads or suspensions?
-(define (reactor-done? r)
-  (define g (external-reactor-internal r))
+(define (reactor-done? g)
   (and
    (empty? (reactor-active g))
    (hash-empty? (reactor-susps g))))
@@ -473,8 +469,7 @@
     (continuation-marks (rthread-k r) reactive-tag)))
 
 ;; safe-reactor -> (listof rthread)
-(define (all-threads r*)
-  (define r (external-reactor-internal r*))
+(define (all-threads r)
   (flatten
    (cons (reactor-active r)
          (flatten-control-tree (reactor-ct r)))))

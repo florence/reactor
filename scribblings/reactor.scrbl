@@ -1,7 +1,6 @@
 #lang scribble/manual
 @(require (for-label (except-in racket process last)
-                     reactor
-                     reactor/engine)
+                     reactor)
           scribble/example)
 
 @(define evil (make-base-eval '(require reactor)))
@@ -447,12 +446,11 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(reactor-safe? [r reactor?]) boolean?]{
 
- Can `react!` be called directly on this reactor? It returns false
- if any uncaught exception is raised in a reaction.
-
- See @secref["r&t"] for unstable behavior of this function.
-
-                                                
+ Can `react!` be called directly on this reactor? It returns
+ false if control escapes a reaction via an abort, exception
+ or other control jump, or if a reaction is already running
+ in a different thread.
+                                               
 }
 
 @defproc[(reactor-continuation-marks [r (and/c reactor? reactor-safe?)])
@@ -465,14 +463,9 @@ It is never safe to share a signal between two reactors.
 @section{Caveats and unstable API's}
 
 
-@bold{Warning:} The API's and behaviors presented here is unstable, and may
+@bold{Warning:} The API's and behaviors presented here is especially unstable, and may
 change without warning.
 
-@subsection[#:tag "r&t"]{Reactions and Threads}
-
-Reactors are not @racket[reactor-safe?] if either the
-reactor is under the control of an ignition thread, or if
-this reactor was created in a different thread.
 
 @subsection{Signals and Synchronization}
 
@@ -489,102 +482,20 @@ from a reaction where it is being used, extra
 synchronization must be used to ensure the signal is not
 look at during a reaction.
 
-@subsection{Caveat concerning exception handling}
+@subsection{Caveat concerning exception handling and control jumps}
 
-Catching an exception inside of a reaction is currently
-unsafe. For example, if an exception passed through a
-@racket[par&], @racket[suspend&], or @racket[abort&] for the
-reactors control structure may become corrupted, and the
-reaction may block forever, or raise internal errors.
+Catching an exception using @racket[with-handlers], catching
+and applying a continuation inside of a reaction, or
+aborting to a prompt inside of a reaction is unsafe. For
+example, if an exception passed through a @racket[par&],
+@racket[suspend&], or @racket[abort&] for the reactors
+control structure may become corrupted, and the reaction
+behavior and the state of its signals is unspecified.
+Control may safely leave the reactor in this way, but the
+machine itself is marked as unsafe and can no longer react.
 
-In addition if an exception is raised within a reaction, the
-state of any signals it could have effected are indeterminate.
+Catching exceptions with @racket[with-handlers&] is safe.
 
-@subsection{Engine}
-
-@defmodule[reactor/engine]
-
-Bindings for automatically running reactions
-
-@defproc[(ignition! [r (and/c reactor? reactor-safe?)])
-         any]{
-
- Run reactions in the reactor automatically (in a different
- @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")]).
-
- A reaction runs if there is a queued reaction or if any
- process @racket[pause&]ed in the last reaction---that is, if
- @racket[reactor-done?] and @racket[reactor-suspended?] are @racket[#f].
-
- This function causes @racket[(reactor-ignited? r)] be true,
- and @racket[(reactor-safe? r)] to be false.
-                                                         
-}
-
-@defproc[(shutdown! [r (and/c reactor? reactor-ignited?)]) any]{
-
- Stop running reactions automatically. Causes
- @racket[(reactor-ignited? r)] to be false.
- @racket[(reactor-safe? r)] may still be false if the reactor
- crashed.
-
-}
-
-@defproc[(reactor-ignited? [r reactor?]) boolean?]{
-
- Has this reactor been ignited by @racket[ignition!].
- Implies @racket[(not (reactor-safe? r))].
-                                                   
-}
-
-@defproc[(queue-emission!
-          [r (and/c reactor? reactor-ignited?)]
-          [emissions (or/c pure-signal? (list/c value-signal? any/c))] ...)
-         any]{
-
- Queue a reaction in this reactor, with the given signals
- emitted. If this function is called multiple times before
- the queued reaction runs, all the given emissions
- occur in the next instant.
- 
-}
-
-@defproc[(queue-single-emission!
-          [r (and/c reactor? reactor-ignited?)]
-          [emissions (or/c pure-signal? (list/c value-signal? any/c))] ...)
-         any]{
-
- Like @racket[queue-emission!] but forces any subsequent
- queued emissions to run in the next instant.
- 
-}
-
-@defproc[(bind-signal [r (and/c reactor? reactor-ignited?)]
-                      [s signal?]
-                      [e evt?])
-         evt?]{
-
- Create an event that is ready when @racket[e] is ready, but
- who's synchronization result is itself. When
- synchronized on @racket[s] is queued for emission in
- @racket[r]. If @racket[s] is a @racket[value-signal?], it is
- emitted with the
- @tech["synchronization result" #:doc '(lib "scribblings/reference/reference.scrbl")]
- of @racket[e].
-
- If @racket[r] is @racket[shutdown!], this event will never
- become ready, and never queue an emission, even if the reactor is reignited.
-
- @bold{Warning:} Even if @racket[r] is @racket[shutdown!],
- synchronizing on the result of @racket[bind-signal] could
- still synchronize on @racket[e]. For example, if @racket[e]
- is a
- @tech["semaphore"  #:doc '(lib "scribblings/reference/reference.scrbl")],
- synchronizing on the result of @racket[bind-signal] might
- decrement the semaphores counter, even though the event is
- never ready.
-
-}
 
 
 

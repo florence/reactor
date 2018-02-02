@@ -5,22 +5,22 @@
   [signal? predicate/c ]
   [pure-signal? predicate/c]
   [value-signal? predicate/c]
-  [rename external-reactor? reactor? predicate/c]
+  [reactor? predicate/c]
   [process? predicate/c]
-  [reactor-done? (-> (and/c external-reactor? reactor-safe?) any/c)]
-  [reactor-suspended? (-> (and/c external-reactor? reactor-safe?) any/c)]
+  [reactor-done? (-> (and/c reactor? reactor-safe?) any/c)]
+  [reactor-suspended? (-> (and/c reactor? reactor-safe?) any/c)]
   [last (-> value-signal? any/c)]
   [last? (-> signal? any)]
-  [reactor-safe? (-> external-reactor? any/c)]
+  [reactor-safe? (-> reactor? any/c)]
   [signal-name (-> signal? (and/c symbol? (not/c symbol-interned?)))]
   [signal=? (-> signal? signal? any/c)]
   [reactor-continuation-marks
-   (-> (and/c external-reactor? reactor-safe?)
+   (-> (and/c reactor? reactor-safe?)
        (listof continuation-mark-set?))]
   [signal/c (-> contract? contract?)]
   ;; running
-  [prime (-> process? external-reactor?)]
-  [react! (-> (and/c external-reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
+  [prime (-> process? reactor?)]
+  [react! (-> (and/c reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
  ;; process creation
  (rename-out [process* process])
  define-process
