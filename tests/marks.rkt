@@ -42,5 +42,21 @@
         #:after R))))
    (react! r)
    (check-equal? (length (reactor-continuation-marks r))
-                 1)))
+                 1))
+
+  (test-begin
+   (define-signal S)
+   (define-signal S1)
+   (define r
+     (prime
+      (process
+       (present& S
+                 (void)
+                 (with-continuation-mark 1 1 (await& S1))))))
+   (react! r)
+   (react! r)
+   (define l (reactor-continuation-marks r))
+   (check-equal? (rest l) empty)
+   (check-equal? (continuation-mark-set->list (first l) 1)
+                (list 1))))
       

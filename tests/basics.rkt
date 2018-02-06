@@ -235,4 +235,17 @@
      (-> (signal/c number?) process?)
      (process (emit& S 2)))
    (check-not-exn
-    (lambda () (react! (prime (test S)))))))
+    (lambda () (react! (prime (test S))))))
+  (test-begin
+   (define-signal I)
+   (define-signal O)
+   (define r
+     (prime
+      (process
+       (present& I (void) (begin (await& I) (emit& O))))))
+   (react! r)
+   (check-false (last? O))
+   (react! r)
+   (check-false (last? O))
+   (react! r I)
+   (check-true (last? O))))
