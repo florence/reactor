@@ -157,6 +157,28 @@
      #'(run& (await-immediate S))]
     [(await& S)
      #'(run& (await S))]
+    [(await& #:immediate #:count n S)
+     #'(let ([k n]
+             [s S])
+         (unless (exact-positive-integer? n)
+           (error 'await& "expected exact postive integer, got ~v" n))
+         (let loop ([c k])
+           (cond
+             [(= c 1)
+              (await& #:immediate s)]
+             [else
+              (await& #:immediate s)
+              pause&
+              (loop (sub1 c))])))]
+    [(await& #:count n S)
+     #'(let ([k n]
+             [s S])
+         (unless (exact-positive-integer? n)
+           (error 'await& "expected exact postive integer, got ~v" n))
+         (let loop ([c k])
+           (unless (zero? c)
+             (await& s)
+             (loop (sub1 c)))))]
     [(await& S [pat:expr body:expr ...] ...)
      #'(let ()
          (define f

@@ -248,4 +248,45 @@
    (react! r)
    (check-false (last? O))
    (react! r I)
+   (check-true (last? O)))
+
+  (test-begin
+   (define-signal I)
+   (define-signal O)
+   (define r
+     (prime
+      (process
+       (await& #:count 3 I)
+       (emit& O))))
+   (react! r)
+   (check-false (last? O))
+   (react! r I)
+   (check-false (last? O))
+   (react! r I)
+   (check-false (last? O))
+   (react! r I)
+   (check-true (last? O)))
+  (test-begin
+   (define-signal I)
+   (define-signal O)
+   (define r
+     (prime
+      (process
+       (await& #:immediate I)
+       (emit& O))))
+   (react! r I)
+   (check-true (last? O)))
+  (test-begin
+   (define-signal I)
+   (define-signal O)
+   (define r
+     (prime
+      (process
+       (await& #:immediate #:count 3 I)
+       (emit& O))))
+   (react! r I)
+   (check-false (last? O))
+   (react! r I)
+   (check-false (last? O))
+   (react! r I)
    (check-true (last? O))))

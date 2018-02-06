@@ -238,14 +238,18 @@ It is never safe to share a signal between two reactors.
  
 }
 
-@defform*[((await& maybe-immediate S)
+@defform*[((await& maybe-immediate maybe-count S)
            (await& S [pattern body ...] ...+))
-          #:grammar ([maybe-immediate (code:line) #:immediate])]{
+          #:grammar ([maybe-immediate (code:line) #:immediate]
+                     [maybe-count (code:line) (code:line #:immediate n)])]{
 
  Awaits the emission of the signal @racket[S]. In the
  @racket[#:immediate] variant, the unblocks the same instant
  @racket[S] is emitted, and evaluates to @racket[(void)].
  Otherwise it terminates the following instant.
+
+ If @racket[#:count] is provided @racket[await&] awaits that
+ many signals. 
                                              
  If pattern clauses are provided, @racket[S] must be a value carrying
  signal. In this case the value is matched against the given
