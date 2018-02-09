@@ -396,27 +396,26 @@
 ;; ControlTree (Listof RThread) -> (Listof Any)
 ;; run all threads, blocking the current thread until all have completed
 (define (parf ct threads)
-  (define counter (length threads))
-  (define cells (for/list ([t (in-list threads)]) (box #f)))
-  ;; TODO optimization mentioned in RML paper:
-  ;; pass boxed counter around, so that when
-  ;; a thread is dynamically allocated it can
-  ;; reuse/join the outer thread group
-  (%% k
-      (for ([t (in-list threads)]
-            [cell (in-list cells)])
-        (activate!
-         (continue-at
-          (lambda ()
-            (define x (call-with-control-safety t ct))
-            (set! counter (- counter 1))
-            (set-box! cell x)
-            (when (zero? counter)
-              (activate! (continue-at (lambda () (map unbox cells)) k ct )))
-            (switch!))
-          k
-          ct)))
-      (switch!)))
+  (cond
+    [(empty? threads) (list)]
+    [else
+     (define counter (length threads))
+     (define cells (for/list ([t (in-list threads)]) (box #f)))
+     (%% k
+         (for ([t (in-list threads)]
+               [cell (in-list cells)])
+           (activate!
+            (continue-at
+             (lambda ()
+               (define x (call-with-control-safety t ct))
+               (set! counter (- counter 1))
+               (set-box! cell x)
+               (when (zero? counter)
+                 (activate! (continue-at (lambda () (map unbox cells)) k ct )))
+               (switch!))
+             k
+             ct)))
+         (switch!))]))
 
 (define emitf
   (case-lambda

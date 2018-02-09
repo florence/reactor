@@ -299,6 +299,7 @@
    (check-exn
     #rx"loop& terminated in a single instant!"
     (lambda () (react! r))))
+  
   (test-begin
    (define r
      (prime
@@ -306,4 +307,23 @@
        (loop& pause&))))
    (check-not-exn (lambda () (react! r)))
    (check-not-exn (lambda () (react! r)))
-   (check-not-exn (lambda () (react! r)))))
+   (check-not-exn (lambda () (react! r))))
+  (test-begin
+   (define-signal O)
+   (define r
+     (prime (process (par&) (emit& O))))
+   (react! r)
+   (check-true (last? O)))
+
+  (test-begin
+   (define r
+     (prime (process (loop& (par&)))))
+   (check-exn
+    #rx"loop& terminated in a single instant!"
+    (lambda () (react! r))))
+  (test-begin
+   (define r
+     (prime (process (loop& (par& 1 2)))))
+   (check-exn
+    #rx"loop& terminated in a single instant!"
+    (lambda () (react! r)))))
