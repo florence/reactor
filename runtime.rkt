@@ -451,7 +451,9 @@
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k ct)
-   (make-rthread k f))
+  (if (hide-thread?)
+      (make-hidden-rthread k f)
+      (make-rthread k f)))
 
 ;; (-> Any) ControlTree -> Any
 ;; call F with continuation barrier and the reactor exn handler
@@ -469,10 +471,13 @@
     (continuation-marks (rthread-k r) reactive-tag)))
 
 ;; safe-reactor -> (listof rthread)
+;; get all non-hidden threads
 (define (all-threads r)
-  (flatten
-   (cons (reactor-active r)
-         (flatten-control-tree (reactor-ct r)))))
+  (filter
+   (lambda (x) (not (hidden-rthread? x)))
+   (flatten
+    (cons (reactor-active r)
+          (flatten-control-tree (reactor-ct r))))))
 
 (define (flatten-control-tree ct)
   (apply append

@@ -26,6 +26,13 @@
   #:authentic
   #:constructor-name make-rthread)
 
+(define hide-thread? (make-parameter #f))
+
+(struct hidden-rthread rthread ()
+  #:authentic)
+(define (make-hidden-rthread k f)
+  (hidden-rthread k (lambda () (parameterize ([hide-thread? #t]) (f)))))
+
 (define (run-rthread r)
   ((rthread-k r) (rthread-f r)))
 

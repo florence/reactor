@@ -194,10 +194,11 @@
      #`(let loop ()
          (define-signal loop-check)
          (par& (begin p ... (emit& loop-check))
-               (present& loop-check
-                         #,(syntax/loc this-syntax
-                             (error 'loop& "loop& terminated in a single instant!"))
-                         (void)))
+               (parameterize ([hide-thread? #t])
+                 (present& loop-check
+                           #,(syntax/loc this-syntax
+                               (error 'loop& "loop& terminated in a single instant!"))
+                           (void))))
          (loop))]))
 
 (define-syntax/in-process halt&

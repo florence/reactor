@@ -1,5 +1,5 @@
 #lang racket
-(require reactor)
+(require reactor (only-in reactor/data hide-thread?))
 (module+ test
   (require rackunit)
   
@@ -58,5 +58,24 @@
    (define l (reactor-continuation-marks r))
    (check-equal? (rest l) empty)
    (check-equal? (continuation-mark-set->list (first l) 1)
-                (list 1))))
-      
+                 (list 1)))
+  (test-begin
+   (define r
+     (prime
+      (process
+       (par& pause&
+             (parameterize ([hide-thread? #t]) pause&)))))
+   (react! r)
+   (check-equal? (length (reactor-continuation-marks r))
+                 1))
+  (test-begin
+   ;; NOTE this test is about making sure
+   ;; hidden threads stay hidden. If the implementation of loop stops relying on
+   ;; internal threads this test becomes meaningless
+   (define r
+     (prime
+      (process
+       (loop& pause&))))
+   (react! r)
+   (check-equal? (length (reactor-continuation-marks r))
+                 1)))
