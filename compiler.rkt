@@ -191,8 +191,13 @@
 (define-syntax/in-process loop&
   (syntax-parser
     [(loop& p ...)
-     #'(let loop ()
-         p ...
+     #`(let loop ()
+         (define-signal loop-check)
+         (par& (begin p ... (emit& loop-check))
+               (present& loop-check
+                         #,(syntax/loc this-syntax
+                             (error 'loop& "loop& terminated in a single instant!"))
+                         (void)))
          (loop))]))
 
 (define-syntax/in-process halt&

@@ -289,4 +289,21 @@
    (react! r I)
    (check-false (last? O))
    (react! r I)
-   (check-true (last? O))))
+   (check-true (last? O)))
+
+  (test-begin
+   (define r
+     (prime
+      (process
+       (loop& (void)))))
+   (check-exn
+    #rx"loop& terminated in a single instant!"
+    (lambda () (react! r))))
+  (test-begin
+   (define r
+     (prime
+      (process
+       (loop& pause&))))
+   (check-not-exn (lambda () (react! r)))
+   (check-not-exn (lambda () (react! r)))
+   (check-not-exn (lambda () (react! r)))))
