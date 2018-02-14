@@ -53,7 +53,17 @@
 ;; (make-pure-signal boolean uninterned-symbol (make-signal-evt))
 
 (struct signal ([status #:mutable] [last? #:mutable] name evt)
-  #:property prop:evt (lambda (S) (wrap-evt (signal-evt S) (lambda (_) S))))
+  #:property prop:evt (lambda (S) (wrap-evt (signal-evt S) (lambda (_) S)))
+  #:methods gen:equal+hash
+  [(define (equal-proc left right _)
+     (and (signal? left)
+          (signal? right)
+          (eq? (signal-name left)
+               (signal-name right))))
+   (define (hash-proc self rec)
+     (rec (signal-name self)))
+   (define (hash2-proc self rec)
+     (rec (signal-name self)))])
 
 (define (make-signal-evt) (make-semaphore 0))
 (define (ready-signal! S)
