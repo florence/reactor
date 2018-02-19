@@ -6,8 +6,6 @@ env:
   matrix:
     - RACKET_VERSION=HEAD
     - RACKET_VERSION=6.12
-    - RACKET_VERSION=6.11
-    - RACKET_VERSION=6.10
     
 matrix:
   fast_finish: true
