@@ -11,6 +11,7 @@
   [reactor-suspended? (-> (and/c reactor? reactor-safe?) any/c)]
   [last (-> value-signal? any/c)]
   [last? (-> signal? any)]
+  [default (-> value-signal? any/c)]
   [reactor-safe? (-> reactor? any/c)]
   [signal-name (-> signal? (and/c symbol? (not/c symbol-interned?)))]
   [signal=? (-> signal? signal? any/c)]

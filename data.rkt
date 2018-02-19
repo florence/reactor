@@ -83,7 +83,7 @@
                (string->uninterned-symbol (symbol->string name))
                (make-signal-evt)))
                              
-(struct value-signal signal (value collection gather)
+(struct value-signal signal (value default collection gather)
   #:mutable)
 ;; `status` is as in `pure-signal`
 ;; `value` is the value of the signal for this instant. It is equal to the result of
@@ -92,15 +92,15 @@
 ;; `collection` is the list of values it has been emitted with this instant
 ;; `gather` turns collection into the new value between instants
 
-(define (make-value-signal name value collection gather)
+(define (make-value-signal name default collection gather)
   (value-signal #f #f
                 (string->uninterned-symbol (symbol->string name))
                 (make-signal-evt)
-                value collection gather))
+                default default collection gather))
 
 
 (define (signal/c /c)
-  (struct/c value-signal any/c any/c any/c any/c /c any/c (-> /c /c /c)))
+  (struct/c value-signal any/c any/c any/c any/c /c /c any/c (-> /c /c /c)))
 
 ;; a ControlTree is one of:
 ;;   (make-top (listof ControlTree) (Listof RThread))

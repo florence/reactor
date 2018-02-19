@@ -274,6 +274,12 @@ It is never safe to share a signal between two reactors.
 
 }
 
+@defproc[(default [S value-signal?]) any]{
+
+ Gets the value that @racket[S] was initialized with.
+                                        
+}
+
 
 @examples[#:eval evil
           (define-signal input)

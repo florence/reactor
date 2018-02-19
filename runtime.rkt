@@ -16,6 +16,7 @@
          react!
          reactor-done?
          reactor-suspended?
+         default
          %%
          activate-suspends!
          continue-at
@@ -277,6 +278,7 @@
 ;; ValueSignal -> Any
 (define last value-signal-value)
 (define last? signal-last?)
+(define default value-signal-default)
 
 ;; Process -> Any
 (define (runf proc control-tree) (((process-thunk proc) control-tree)))
