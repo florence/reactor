@@ -105,11 +105,10 @@
 ;; a ControlTree is one of:
 ;;   (make-top (listof ControlTree) (Listof RThread))
 ;;   (make-suspend-unless (listof ControlTree) Signal (Listof RThread))
-;;   (make-preempt-when (listof ControlTree) Signal (Listof RThread))
+;;   (make-preempt-when (listof ControlTree) Signal (Listof RThread) (-> (Maybe Thread)))
 
 (struct control-tree (children next)
   #:mutable
-  #:transparent
   #:authentic)
 
 (struct top control-tree ()
