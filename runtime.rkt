@@ -22,33 +22,21 @@
          continue-at
          with-handler-pred
          reactor-continuation-marks)
-(require "data.rkt"
+(require reactor/data
+         reactor/control
          (for-syntax syntax/parse)
          racket/control)
 (module+ test (require rackunit))
 
-
-
-
-;;;;;; OS
-
 (define the-current-reactor (make-parameter #f))
-(define reactive-tag (make-continuation-prompt-tag 'reaction))
+
 (define (current-reactor)
   (define r (the-current-reactor))
   (unless r
     (raise-process-escape-error))
   r)
-(define-syntax %%
-  (syntax-parser
-    [(_ k:id body ...)
-     #'(begin
-         (unless (continuation-prompt-available? reactive-tag)
-           (raise-process-escape-error))
-         ((call/cc (lambda (k) (lambda () body ...)) reactive-tag)))]))
 
-(define (raise-process-escape-error)
-  (error "process escaped reactor context"))
+
 
 ;; Process -> Reactor
 (define (prime proc)
@@ -65,9 +53,12 @@
           [(list a b) (emit-value a b)]
           [a (emit-pure a)])))
     (sched! grp))
+  
   (call-with-continuation-barrier
-   (lambda () (call/prompt start reactive-tag)))
-  (cleanup! grp)
+   (lambda ()
+     (call/prompt start reactive-tag)
+     (cleanup! grp)))
+  
   (reactor-safe! grp))
 
 ;; (-> Any) -> Reactor
@@ -89,6 +80,29 @@
     (make-rthread kont (proc top-tree)))
   (reactor void (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty #t))
 
+
+;                                                                                   
+;                                                                                   
+;                                                                                   
+;                                                                                   
+;                     ;;                     ;;           ;;;;                      
+;      ;;;            ;;                     ;;            ;;;                      
+;    ;;;;;            ;;                     ;;             ;;                      
+;   ;;          ;;;;  ;; ;;;     ;;;       ;;;;  ;;   ;;    ;;       ;;;    ;;;; ;; 
+;   ;;        ;;;;;;  ;;;;;;;   ;;;;;    ;;;;;;  ;;   ;;    ;;      ;;;;;   ;;;;;;; 
+;    ;;;     ;;;      ;;   ;;   ;   ;;   ;;  ;;  ;;   ;;    ;;      ;   ;;    ;;;   
+;      ;;;   ;;       ;;   ;;  ;;;;;;;  ;;   ;;  ;;   ;;    ;;     ;;;;;;;    ;;    
+;        ;;  ;;       ;;   ;;  ;;;;;;;  ;;   ;;  ;;   ;;    ;;     ;;;;;;;    ;;    
+;        ;;  ;;;      ;;   ;;  ;;       ;;   ;;  ;;   ;;    ;;     ;;         ;;    
+;   ;;;;;;    ;;;;;;  ;;   ;;   ;;;;;;   ;;;;;;  ;;;;;;;  ;;;;;;    ;;;;;;  ;;;;;;  
+;   ;;;;       ;;;;;  ;;   ;;     ;;;;    ;; ;;   ;;; ;;  ;;;;;;      ;;;;  ;;;;;;  
+;                                                                                   
+;                                                                                   
+;                                                                                   
+;                                                                                   
+;                                                                                   
+
+
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
 (define (sched! g)
@@ -103,6 +117,83 @@
        (run-rthread next)))
     (sched! g)))
 
+
+;; -> Any
+;; switch back to the scheduler
+(define (switch!)
+  ((reactor-os (current-reactor))))
+
+;; Signal -> Void
+;; registers a signal emission with the OS for cleanup after the instant.
+;; also unblocks any processes waiting on S
+(define (register-signal-emission! S)
+  (set-reactor-signals!
+   (current-reactor)
+   (cons S (reactor-signals (current-reactor))))
+  (unblock! S))
+
+;; Reactor -> Boolean
+;; does this reactor have no active threads, but have suspened threads?
+(define (reactor-suspended? r)
+  (and (ireactor-suspended? r)
+       (not (hash-empty? (reactor-susps r)))))
+
+;; Reactor -> Boolean
+;; does this reactor have no active threads?
+(define (ireactor-suspended? g)
+  (empty? (reactor-active g)))
+
+;; Reactor -> Boolean
+;; does this reactor have active threads or suspensions?
+(define (reactor-done? g)
+  (and
+   (empty? (reactor-active g))
+   (hash-empty? (reactor-susps g))))
+
+;; RThread -> Void
+;; register this threads as active
+(define (activate! thrd)
+  (set-reactor-active!
+   (current-reactor)
+   (cons thrd (reactor-active (current-reactor)))))
+
+;; ControlTree RThread -> Void
+;; register this thread for the next instant
+(define (run-next! ct thrd)
+  (set-control-tree-next!
+   ct
+   (cons thrd (control-tree-next ct))))
+
+;; ControlTree ControlTree -> Void
+;; Effect: Add `nt` to the children of `cct`
+(define (add-new-control-tree! cct nt)
+  (set-control-tree-children!
+   cct
+   (cons nt (control-tree-children cct))))
+
+
+
+;                                                                                                                                         
+;                                                                                                                                         
+;                                                                                                                                         
+;                                                                                                                                         
+;                                                                                    ;;;;                                                 
+;   ;;;;;;                       ;;                         ;;                  ;;;   ;;;                                                 
+;   ;;;;;;                       ;;                         ;;                ;;;;;    ;;                                                 
+;     ;;     ;; ;;;     ;;;;   ;;;;;;;   ;;;     ;; ;;;   ;;;;;;;            ;;        ;;       ;;;     ;;;     ;; ;;;   ;;   ;;  ;; ;;   
+;     ;;     ;;;;;;;   ;;;;;;  ;;;;;;;   ;;;;;   ;;;;;;;  ;;;;;;;           ;;         ;;      ;;;;;    ;;;;;   ;;;;;;;  ;;   ;;  ;;;;;;  
+;     ;;     ;;   ;;  ;;         ;;          ;;  ;;   ;;    ;;              ;;         ;;      ;   ;;       ;;  ;;   ;;  ;;   ;;  ;;   ;; 
+;     ;;     ;;   ;;   ;;;       ;;        ;;;;  ;;   ;;    ;;              ;;         ;;     ;;;;;;;     ;;;;  ;;   ;;  ;;   ;;  ;;   ;; 
+;     ;;     ;;   ;;     ;;;     ;;      ;;;;;;  ;;   ;;    ;;              ;;         ;;     ;;;;;;;   ;;;;;;  ;;   ;;  ;;   ;;  ;;   ;; 
+;     ;;     ;;   ;;       ;;    ;;     ;;   ;;  ;;   ;;    ;;               ;;        ;;     ;;       ;;   ;;  ;;   ;;  ;;   ;;  ;;  ;;  
+;   ;;;;;;   ;;   ;;  ;;;;;;     ;;;;;  ;;;;;;;  ;;   ;;    ;;;;;            ;;;;;;  ;;;;;;    ;;;;;;  ;;;;;;;  ;;   ;;  ;;;;;;;  ;;;;;;  
+;   ;;;;;;   ;;   ;;  ;;;;;        ;;;   ;;; ;;  ;;   ;;      ;;;              ;;;;  ;;;;;;      ;;;;   ;;; ;;  ;;   ;;   ;;; ;;  ;;;;    
+;                                                                                                                                 ;;      
+;                                                                                                                                 ;;      
+;                                                                                                                                 ;;      
+;                                                                                                                                         
+;                                                                                                                                         
+
 ;; reactor -> Void
 ;; should not be called within a `reactive-tag`.
 (define (cleanup! g)
@@ -110,13 +201,16 @@
   (for* ([(_ procs) (in-hash blocked)]
          [b (in-list procs)])
     (run-next! (blocked-ct b) (blocked-absent b)))
+  
+  (cleanup-join-points! ct)
+  
   (define new-susps
     (let ([new-susps (make-hasheq)])
       (add-suspends! new-susps (get-top-level-susps ct))
       new-susps))
 
   (reset-reactor-signals! g)
-  
+
   (define new-active (get-next-active! ct))
   
   (set-reactor-os! g void)
@@ -124,6 +218,33 @@
   (set-reactor-blocked! g (make-hasheq))
   
   (set-reactor-susps! g new-susps))
+
+;; ControlTree -> Void
+;; delete join points for paused threads who
+;; may not have gotten a chance to run after the read of their group finished
+;; INVARIANT: Must be run during instant cleanup,
+;;     after signals are reset, but before new active threads are determined
+(define (cleanup-join-points! ct)
+  (define children (control-tree-children ct))
+  (define threads (control-tree-next ct))
+  (for-each cleanup-join-points! children)
+  (set-control-tree-next! ct (map cleanup-join-point threads)))
+
+;; RThread -> RThred
+;; delete uneeded join points from the threads stack
+(define (cleanup-join-point t)
+  (define cont (rthread-k t))
+  (define res (rthread-f t))
+
+  (call/prompt
+   (lambda ()
+     (call/cc
+      (lambda (k)
+        (cont
+         (lambda ()
+           (delete-thread-joins!)
+           (%% cont2 (k (continue-at res cont2))))))))
+   reactive-tag))
 
 ;; ControlTree -> (listof RThread)
 ;; get any threads that should start active in the next instant
@@ -199,59 +320,6 @@
     (ready-signal! S)
     (set-reactor-signals! g (cons S (reactor-signals g))))
   (set-signal-status! S #f))
-
-;; -> Any
-;; switch back to the scheduler
-(define (switch!)
-  ((reactor-os (current-reactor))))
-
-;; Signal -> Void
-;; registers a signal emission with the OS for cleanup after the instant.
-;; also unblocks any processes waiting on S
-(define (register-signal-emission! S)
-  (set-reactor-signals!
-   (current-reactor)
-   (cons S (reactor-signals (current-reactor))))
-  (unblock! S))
-
-;; Reactor -> Boolean
-;; does this reactor have no active threads, but have suspened threads?
-(define (reactor-suspended? r)
-  (and (ireactor-suspended? r)
-       (not (hash-empty? (reactor-susps r)))))
-
-;; Reactor -> Boolean
-;; does this reactor have no active threads?
-(define (ireactor-suspended? g)
-  (empty? (reactor-active g)))
-
-;; Reactor -> Boolean
-;; does this reactor have active threads or suspensions?
-(define (reactor-done? g)
-  (and
-   (empty? (reactor-active g))
-   (hash-empty? (reactor-susps g))))
-
-;; RThread -> Void
-;; register this threads as active
-(define (activate! thrd)
-  (set-reactor-active!
-   (current-reactor)
-   (cons thrd (reactor-active (current-reactor)))))
-
-;; ControlTree RThread -> Void
-;; register this thread for the next instant
-(define (run-next! ct thrd)
-  (set-control-tree-next!
-   ct
-   (cons thrd (control-tree-next ct))))
-
-;; ControlTree ControlTree -> Void
-;; Effect: Add `nt` to the children of `cct`
-(define (add-new-control-tree! cct nt)
-  (set-control-tree-children!
-   cct
-   (cons nt (control-tree-children cct))))
 
 ;                                                                 
 ;                                                                 
@@ -394,75 +462,96 @@
                   (hash-ref blocked (signal-name S) empty)))
       (switch!))]))
 
+;; (Keyof (Pairof (Boxof Boolean) DeleteTag)
+(define continuation-deletion-state-key
+  (make-continuation-mark-key 'continuation-deletion-state-key))
+(define (get-continuation-mark-deletion-state)
+  (continuation-mark-set->list (current-continuation-marks) continuation-deletion-state-key))
 
 ;; ControlTree (Listof RThread) -> (Listof Any)
 ;; run all threads, blocking the current thread until all have completed
 (define (parf ct threads)
   (cond
     [(empty? threads) (list)]
+    [(empty? (rest threads)) ((first threads))]
     [else
-     (define counter (length threads))
-     (define cells (for/list ([t (in-list threads)]) (box #f)))
-     (%% k
-         (for ([t (in-list threads)]
-               [cell (in-list cells)])
-           (activate!
-            (continue-at
-             (lambda ()
-               (define x (call-with-control-safety t ct))
-               (set! counter (- counter 1))
-               (set-box! cell x)
-               (when (zero? counter)
-                 (activate! (continue-at (lambda () (map unbox cells)) k ct )))
-               (switch!))
-             k
-             ct)))
-         (switch!))]))
+     (define par-tag (make-delete-tag))
+     (delimit-delete-begin
+      par-tag
+      (define counter (length threads))
+      (define please-delete? (box #f))
+      (with-continuation-mark continuation-deletion-state-key (cons please-delete? par-tag)
+        (%%
+         k
+         (for ([t (in-list threads)])
+           (define (thread-body+join-point)
+             (call-with-control-safety
+              (lambda () (delimit-delete-end par-tag (t)))
+              ct)
+             (set! counter (- counter 1))
+             (cond
+               [(= 1 counter)
+                (set-box! please-delete? #t)]
+               [(zero? counter)
+                (activate! (continue-at void k ct))])
+             (switch!))
+           (define new-thread (continue-at thread-body+join-point k ct))
+           (activate! new-thread))
+         (switch!))))]))
 
 (define emitf
   (case-lambda
     [(S) (emit-pure S)]
     [(S v) (emit-value S v)]))
 
+;                                                                 
+;                                                                 
+;                                                                 
+;                                                                 
+;                                                         ;;;;    
+;       ;;;                      ;;                        ;;;    
+;     ;;;;;                      ;;                         ;;    
+;    ;;        ;;;    ;; ;;;   ;;;;;;;  ;;;; ;;    ;;;      ;;    
+;   ;;        ;;;;;   ;;;;;;;  ;;;;;;;  ;;;;;;;   ;;;;;     ;;    
+;   ;;       ;;   ;;  ;;   ;;    ;;       ;;;    ;;   ;;    ;;    
+;   ;;       ;;   ;;  ;;   ;;    ;;       ;;     ;;   ;;    ;;    
+;   ;;       ;;   ;;  ;;   ;;    ;;       ;;     ;;   ;;    ;;    
+;    ;;      ;;   ;;  ;;   ;;    ;;       ;;     ;;   ;;    ;;    
+;    ;;;;;;   ;;;;;   ;;   ;;    ;;;;;  ;;;;;;    ;;;;;   ;;;;;;  
+;      ;;;;    ;;;    ;;   ;;      ;;;  ;;;;;;     ;;;    ;;;;;;  
+;                                                                 
+;                                                                 
+;                                                                 
+;                                                                 
+;
 
-;                                                                                                                       
-;                                                                                                                       
-;                                                                                                                       
-;                                                                                                                       
-;                                          ;;                                           ;;                              
-;       ;;;                      ;;        ;;                                 ;;        ;;                              
-;     ;;;;;                      ;;        ;;                                 ;;        ;;                              
-;    ;;        ;;;    ;; ;;;   ;;;;;;;  ;;;;;    ;; ;;;   ;;   ;;   ;;;     ;;;;;;;  ;;;;;      ;;;    ;; ;;;     ;;;;  
-;   ;;        ;;;;;   ;;;;;;;  ;;;;;;;  ;;;;;    ;;;;;;;  ;;   ;;   ;;;;;   ;;;;;;;  ;;;;;     ;;;;;   ;;;;;;;   ;;;;;; 
-;   ;;       ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;       ;;    ;;        ;;    ;;   ;;  ;;   ;;  ;;      
-;   ;;       ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;     ;;;;    ;;        ;;    ;;   ;;  ;;   ;;   ;;;    
-;   ;;       ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;   ;;;;;;    ;;        ;;    ;;   ;;  ;;   ;;     ;;;  
-;    ;;      ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;  ;;   ;;    ;;        ;;    ;;   ;;  ;;   ;;       ;; 
-;    ;;;;;;   ;;;;;   ;;   ;;    ;;;;;  ;;;;;;;; ;;   ;;  ;;;;;;;  ;;;;;;;    ;;;;;  ;;;;;;;;  ;;;;;   ;;   ;;  ;;;;;;  
-;      ;;;;    ;;;    ;;   ;;      ;;;  ;;;;;;;; ;;   ;;   ;;; ;;   ;;; ;;      ;;;  ;;;;;;;;   ;;;    ;;   ;;  ;;;;;   
-;                                                                                                                       
-;                                                                                                                       
-;                                                                                                                       
-;                                                                                                                       
-;                                                                                                                       
-
-
-
-;; (-> A) ((-> A) -> Nothing) ControlTree -> RThread
+;; (-> A) ((-> A) -> Nothing) [ControlTree] -> RThread
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
-(define (continue-at f k ct)
+(define (continue-at f k [ignored #f])
   (if (hide-thread?)
       (make-hidden-rthread k f)
       (make-rthread k f)))
 
+;; -> Void
+;; Delete join points above the current continuaiton for any singleton thread groups
+(define (delete-thread-joins!)
+  (for ([pair (in-list (get-continuation-mark-deletion-state))])
+    (when (unbox (car pair))
+      (delete-continuation-frames! (cdr pair)))))
+
 ;; (-> Any) ControlTree -> Any
-;; call F with continuation barrier and the reactor exn handler
+;; call f with the reactor exn handler
 (define (call-with-control-safety f ct)
   (call-with-exception-handler
    (lambda (exn)
-     (%% k
-         (run-next! ct (continue-at (lambda () (pausef ct)) k ct)))
+     (run-next!
+      ct
+      (continue-at (lambda () (pausef ct))
+                   (lambda (f)
+                     (f)
+                     (error "handler continuation should be unreachable!"))
+                   ct))
      exn)
    f))
 

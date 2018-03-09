@@ -78,4 +78,22 @@
        (loop& pause&))))
    (react! r)
    (check-equal? (length (reactor-continuation-marks r))
-                 1)))
+                 1))
+
+  (test-begin
+   (define r
+     (prime
+      (process
+       (with-continuation-mark 1 1
+         (par& (with-continuation-mark 1 2 pause&)
+               (with-continuation-mark 1 2 halt&))))))
+   (react! r)
+   (check-equal?
+    (map (lambda (x) (continuation-mark-set->list x 1))
+         (reactor-continuation-marks r))
+    (list (list 2 1) (list 2 1)))
+   (react! r)
+   (check-equal?
+    (map (lambda (x) (continuation-mark-set->list x 1))
+         (reactor-continuation-marks r))
+    (list (list 2)))))

@@ -7,12 +7,23 @@
    (define r
      (prime
       (process
+       (begin (par& 1 2) (emit& S 1)))))
+   (react! r)
+   (check-true (last? S))
+   (check-equal? (last S) 1))
+  #;
+  (test-begin
+   (define-signal S empty #:gather append)
+   (define r
+     (prime
+      (process
        (emit& S (begin pause& (par& 1 2))))))
    (react! r)
    (check-false (last? S))
    (react! r)
    (check-true (last? S))
-   (check-equal? (last S) (list 1 2)))
+   (check-equal? (last S) (void)))
+  #;
   (test-begin
    (define-signal S empty #:gather append)
    (define-signal S2 empty #:gather append)
@@ -27,7 +38,7 @@
    (check-false (last? S2))
    (react! r)
    (check-true (last? S))
-   (check-equal? (last S) (list 1 2))
+   (check-equal? (last S) (void))
    (check-false (last? S2))
    (react! r)
    (check-false (last? S))

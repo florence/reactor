@@ -99,6 +99,10 @@ ending in a @racket[&] may only be used inside of a
  Evaluates to a list containing the result of each
  expression.
 
+ At the end of a reaction if all but one process is left
+ active in the @racket[par&] that process becomes in tail
+ position with respect to the @racket[par&] form.
+
  @valid
 
  @examples[#:eval evil
