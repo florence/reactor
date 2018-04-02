@@ -3,13 +3,12 @@
          emit-value
          runf
          presentf
-         parf
          pausef
          emitf
          switch!
          run-next!
+         activate!
          current-reactor
-         add-new-control-tree!
          last?
          last
          prime
@@ -23,6 +22,7 @@
          with-handler-pred
          reactor-continuation-marks)
 (require reactor/data
+         reactor/ct
          reactor/control
          (for-syntax syntax/parse)
          racket/control)
@@ -64,21 +64,12 @@
 ;; (-> Any) -> Reactor
 ;; make a reactor containing only the given thread, which is active
 (define (make-reactor proc)
-  (define top-tree (make-top empty empty))
+  (define top-tree (make-top #f))
   (define kont #f)
-  (call-with-continuation-barrier
-   (lambda ()
-     (call/prompt
-      (lambda ()
-        ((call-with-composable-continuation
-          (lambda (k)
-            (set! kont k)
-            void)
-          reactive-tag)))
-      reactive-tag)))
   (define initial-thread
-    (make-rthread kont (proc top-tree)))
-  (reactor void (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty #t))
+    (make-rthread empty-calling-continuation (proc top-tree)))
+  (set-top-child! top-tree initial-thread)
+  (reactor (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty #t))
 
 
 ;                                                                                   
@@ -105,23 +96,24 @@
 
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
+(define sched-tag (make-continuation-prompt-tag 'sched))
 (define (sched! g)
   (unless (ireactor-suspended? g)
-    (match-define (reactor os active blocked ct susps signals safe?) g)
+    (match-define (reactor active blocked ct susps signals safe?) g)
     (define next (first active))
     (set-reactor-active! g (rest active))
-    (%%
-     k
-     (set-reactor-os! g (lambda () (k void)))
-     (parameterize ([the-current-reactor g])
-       (run-rthread next)))
+    (call/prompt
+     (lambda ()
+       (parameterize ([the-current-reactor g])
+         (run-rthread (reactor-ct g) next)))
+     sched-tag)
     (sched! g)))
 
 
 ;; -> Any
 ;; switch back to the scheduler
 (define (switch!)
-  ((reactor-os (current-reactor))))
+  (abort/cc sched-tag))
 
 ;; Signal -> Void
 ;; registers a signal emission with the OS for cleanup after the instant.
@@ -157,20 +149,6 @@
    (current-reactor)
    (cons thrd (reactor-active (current-reactor)))))
 
-;; ControlTree RThread -> Void
-;; register this thread for the next instant
-(define (run-next! ct thrd)
-  (set-control-tree-next!
-   ct
-   (cons thrd (control-tree-next ct))))
-
-;; ControlTree ControlTree -> Void
-;; Effect: Add `nt` to the children of `cct`
-(define (add-new-control-tree! cct nt)
-  (set-control-tree-children!
-   cct
-   (cons nt (control-tree-children cct))))
-
 
 
 ;                                                                                                                                         
@@ -197,106 +175,27 @@
 ;; reactor -> Void
 ;; should not be called within a `reactive-tag`.
 (define (cleanup! g)
-  (match-define (reactor os active blocked ct susps signals safe?) g)
+  (match-define (reactor active blocked ct susps signals safe?) g)
   (for* ([(_ procs) (in-hash blocked)]
          [b (in-list procs)])
-    (run-next! (blocked-ct b) (blocked-absent b)))
+    (replace-child! (blocked-parent b) (blocked-blocking b) (blocked-absent b)))
   
-  (cleanup-join-points! ct)
+  (reset-reactor-signals! g)
+  (cleanup-control-tree! ct)
   
+ 
+
   (define new-susps
     (let ([new-susps (make-hasheq)])
       (add-suspends! new-susps (get-top-level-susps ct))
       new-susps))
 
-  (reset-reactor-signals! g)
-
-  (define new-active (get-next-active! ct))
+  (define new-active (get-next-active ct))
   
-  (set-reactor-os! g void)
   (set-reactor-active! g new-active)
   (set-reactor-blocked! g (make-hasheq))
   
   (set-reactor-susps! g new-susps))
-
-;; ControlTree -> Void
-;; delete join points for paused threads who
-;; may not have gotten a chance to run after the read of their group finished
-;; INVARIANT: Must be run during instant cleanup,
-;;     after signals are reset, but before new active threads are determined
-(define (cleanup-join-points! ct)
-  (define children (control-tree-children ct))
-  (define threads (control-tree-next ct))
-  (for-each cleanup-join-points! children)
-  (set-control-tree-next! ct (map cleanup-join-point threads)))
-
-;; RThread -> RThred
-;; delete uneeded join points from the threads stack
-(define (cleanup-join-point t)
-  (define cont (rthread-k t))
-  (define res (rthread-f t))
-
-  (call/prompt
-   (lambda ()
-     (call/cc
-      (lambda (k)
-        (cont
-         (lambda ()
-           (delete-thread-joins!)
-           (%% cont2 (k (continue-at res cont2))))))))
-   reactive-tag))
-
-;; ControlTree -> (listof RThread)
-;; get any threads that should start active in the next instant
-;; EFFECT: removes them from the control tree, cleans up dead children.
-;; INVARIANT: Must be called during an instant, after signals are reset for the next instant
-(define (get-next-active! ct)
-  (define (get-next-active/filter! ct)
-    (define (rec cts)
-      (for/fold ([threads empty] [children empty])
-                ([ct (in-list cts)])
-        (define-values (t ct2) (get-next-active/filter! ct))
-        (values (append t threads) (if ct2 (cons ct2 children) children))))
-    (match ct
-      [(top children threads)
-       (define-values (t child) (rec children))
-       (set-control-tree-next! ct empty)
-       (set-control-tree-children! ct child)
-       (values (append threads t) ct)]
-      [(preempt-when (list) (list) signal g)
-       (values empty #f)]
-      [(preempt-when children threads signal g)
-       (define-values (t child) (rec children))
-       (set-control-tree-next! ct empty)
-       (set-control-tree-children! ct child)
-       (cond
-         [(and (last? signal) (g))
-          =>
-          (lambda (k)
-            (values (cons k t) #f))]
-         [else
-          (values (append threads t)
-                  (if (and (empty? threads) (empty? t) (empty? child)) #f ct))])]
-      [(suspend-unless children threads signal)
-       #:when (last? signal)
-       (define-values (t child) (rec children))
-       (set-control-tree-next! ct (append t threads))
-       (set-control-tree-children! ct child)
-       (values empty
-               (if (and (empty? threads) (empty? t) (empty? child)) #f ct))]
-      [(suspend-unless _ _ _) (values empty ct)]))
-  ;; ---- IN ----
-  (define-values (threads _) (get-next-active/filter! ct))
-  ;; _ must be ct here
-  threads)
-
-;; ControlTree -> (Listof SuspendUnless)
-(define (get-top-level-susps ct)
-  (cond
-    [(suspend-unless? ct)
-     (list ct)]
-    [else
-     (append-map get-top-level-susps (control-tree-children ct))]))
 
 ;; Reactor -> Void
 ;; reset the signal buffer for the next instant
@@ -416,14 +315,10 @@
 ;; ControlTree -> Void
 ;; awaken or activate all suspends in this tree
 (define (activate-suspends! sp)
-  (cond
-    [(or (not (suspend-unless? sp))
-         (signal-status (suspend-unless-signal sp)))
-     (for-each activate! (control-tree-next sp))
-     (set-control-tree-next! sp empty)
-     (for-each activate-suspends! (control-tree-children sp))]
-    [else
-     (add-suspend! (reactor-susps (current-reactor)) sp)]))
+  (register-context-as-active!
+   sp
+   activate!
+   (lambda (susp) (add-suspend! (reactor-susps (current-reactor)) sp))))
   
 
 ;; (hasheq-of Signal SuspendUnless) (Listof SuspendUnless) -> Void
@@ -458,7 +353,7 @@
       (hash-set! blocked
                  (signal-name S)
                  (cons
-                  (make-blocked ct (continue-at p k ct) (continue-at q k ct))
+                  (make-blocked ct (current-rthread) (continue-at p k ct) (continue-at q k ct))
                   (hash-ref blocked (signal-name S) empty)))
       (switch!))]))
 
@@ -467,37 +362,6 @@
   (make-continuation-mark-key 'continuation-deletion-state-key))
 (define (get-continuation-mark-deletion-state)
   (continuation-mark-set->list (current-continuation-marks) continuation-deletion-state-key))
-
-;; ControlTree (Listof RThread) -> (Listof Any)
-;; run all threads, blocking the current thread until all have completed
-(define (parf ct threads)
-  (cond
-    [(empty? threads) (list)]
-    [(empty? (rest threads)) ((first threads))]
-    [else
-     (define par-tag (make-delete-tag))
-     (delimit-delete-begin
-      par-tag
-      (define counter (length threads))
-      (define please-delete? (box #f))
-      (with-continuation-mark continuation-deletion-state-key (cons please-delete? par-tag)
-        (%%
-         k
-         (for ([t (in-list threads)])
-           (define (thread-body+join-point)
-             (call-with-control-safety
-              (lambda () (delimit-delete-end par-tag (t)))
-              ct)
-             (set! counter (- counter 1))
-             (cond
-               [(= 1 counter)
-                (set-box! please-delete? #t)]
-               [(zero? counter)
-                (activate! (continue-at void k ct))])
-             (switch!))
-           (define new-thread (continue-at thread-body+join-point k ct))
-           (activate! new-thread))
-         (switch!))))]))
 
 (define emitf
   (case-lambda
@@ -525,6 +389,10 @@
 ;                                                                 
 ;
 
+;; ControlTree RThread -> Void
+(define (run-next! ct thread)
+  (replace-child! ct (current-rthread) thread))
+
 ;; (-> A) ((-> A) -> Nothing) [ControlTree] -> RThread
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
@@ -532,13 +400,6 @@
   (if (hide-thread?)
       (make-hidden-rthread k f)
       (make-rthread k f)))
-
-;; -> Void
-;; Delete join points above the current continuaiton for any singleton thread groups
-(define (delete-thread-joins!)
-  (for ([pair (in-list (get-continuation-mark-deletion-state))])
-    (when (unbox (car pair))
-      (delete-continuation-frames! (cdr pair)))))
 
 ;; (-> Any) ControlTree -> Any
 ;; call f with the reactor exn handler
@@ -555,22 +416,6 @@
      exn)
    f))
 
-;; safe-reactor -> (listof continuation-mark-set)
+;; safe-reactor -> continuation-mark-tree
 (define (reactor-continuation-marks r)
-  (for/list ([r (all-threads r)])
-    (continuation-marks (rthread-k r) reactive-tag)))
-
-;; safe-reactor -> (listof rthread)
-;; get all non-hidden threads
-(define (all-threads r)
-  (filter
-   (lambda (x) (not (hidden-rthread? x)))
-   (flatten
-    (cons (reactor-active r)
-          (flatten-control-tree (reactor-ct r))))))
-
-(define (flatten-control-tree ct)
-  (apply append
-         (control-tree-next ct)
-         (map flatten-control-tree
-              (control-tree-children ct))))
+  (continuation-mark-tree (reactor-ct r)))

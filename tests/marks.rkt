@@ -1,5 +1,5 @@
 #lang racket
-(require reactor (only-in reactor/data hide-thread?))
+(require reactor (only-in reactor/ct hide-thread?))
 (module+ test
   (require rackunit)
   

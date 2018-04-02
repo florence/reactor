@@ -15,7 +15,7 @@
  abort&
  present&
  with-handlers&)
-(require "data.rkt" "runtime.rkt")
+(require "data.rkt" "runtime.rkt" "ct.rkt" "control.rkt")
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax) racket/hash racket/stxparam)
                                                            
 
@@ -80,10 +80,7 @@
      #'(let ()
          (define-signal S default #:gather gather) ...
          e ...)]))
-(define-syntax/in-process par&
-  (syntax-parser
-    [(par& p ...)
-     #' (parf (current-control-tree) (list (lambda () p) ...))]))
+
 (define-syntax/in-process pause&
   (syntax-parser
     [_:id #'(pausef (current-control-tree))]))
@@ -95,37 +92,58 @@
 (define-syntax/in-process suspend&
   (syntax-parser
     [(suspend& e:expr ... #:unless S)
-     #`(let ([nt (make-suspend-unless empty empty S)])
-         (with-extended-control
-          (lambda ()
-            (%% k
-                (run-next! nt (continue-at (lambda () e ...) k nt))
-                (activate-suspends! nt)
-                (switch!)))
+     #`(%%
+        k
+        (let* ([t (continue-at (lambda () e ...) empty-calling-continuation)]
+               [nt (make-suspend-unless k t S)])
+          (with-extended-control
+           (lambda ()
+             (activate-suspends! nt)
+             (switch!)))
           nt))]))
 (define-syntax/in-process abort&
   (syntax-parser
     [(abort& e:expr ... #:after S)
      #'(%%
         k
-        (let ([ct (current-control-tree)])
+        (let ([t (continue-at
+                  (lambda () e ...)
+                  (empty-calling-continuation))])
           (with-extended-control
-           (lambda () e ...)
+           (lambda () (activate! t) (switch!))
            (make-preempt-when
-            empty empty S
-            (lambda () (continue-at void k ct))))))]
+            k t S
+            (lambda () (continue-at void k))))))]
     [(abort& e:expr ... #:after S [pattern body ...] ...)
      #'(%%
         k
-        (let ([ct (current-control-tree)])
-          (with-extended-control
-           (lambda () e ...)
+        (with-extended-control
+         (let ([t (continue-at
+                   (lambda () e ...)
+                   (empty-calling-continuation))])
+           (lambda () (activate! t) (switch!))
            (make-preempt-when
-            empty empty S
-             (lambda ()
-               (match (last S)
-                 [pattern (continue-at (lambda () body ...) k ct)] ...
-                 [_ #f]))))))]))
+            k t S
+            (lambda ()
+              (match (last S)
+                [pattern (continue-at (lambda () body ...) k)] ...
+                [_ #f]))))))]))
+
+(define-syntax/in-process par&
+  (syntax-parser
+    [(par& p ...)
+     #:with k (generate-temporary)
+     #:with (thread ...) #'((continue-at (lambda () p) empty-calling-continuation) ...)
+     #:with (t ...) (generate-temporaries #'(thread ...))
+     #'(%%
+        k
+        (let ([t thread] ...
+              [ct (current-control-tree)])
+          (lambda ()
+            (activate! t) ...
+            (switch!))
+          (with-extended-control
+           (make-par k (list t ...)))))]))
 
 
 (define-syntax/in-process control&
@@ -147,7 +165,7 @@
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
 (define (with-extended-control body new-tree)
-  (add-new-control-tree! (current-control-tree) new-tree)
+  (replace-child! (current-control-tree) (current-rthread) new-tree)
   (parameterize ([current-control-tree new-tree])
     (body)))
 
@@ -212,24 +230,24 @@
        (for/list ([_ (in-list (syntax->list #'(p ...)))] [i (in-naturals)])
          i))
      #'(signal* ([S empty #:gather append])
-         (abort&
-          (with-handler-pred
-           (lambda (exn)
-             (cond
-               [(p exn) v] ...))
-           S
-           (lambda () body ...)
-           (current-control-tree))
-          #:after S
-          [vals
-           (let loop ([a vals])
-             (match a
-               [(list) empty]
-               [(cons (list n exn) r)
-                (par&
-                 (cond
-                   [(= n v) (h exn)] ...)
-                 (loop r))]))]))]))
+                (abort&
+                 (with-handler-pred
+                  (lambda (exn)
+                    (cond
+                      [(p exn) v] ...))
+                  S
+                  (lambda () body ...)
+                  (current-control-tree))
+                 #:after S
+                 [vals
+                  (let loop ([a vals])
+                    (match a
+                      [(list) empty]
+                      [(cons (list n exn) r)
+                       (par&
+                        (cond
+                          [(= n v) (h exn)] ...)
+                        (loop r))]))]))]))
                      
 
 ;; Signal -> Process
