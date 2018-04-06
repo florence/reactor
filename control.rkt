@@ -4,10 +4,11 @@
          reactive-tag
          empty-calling-continuation
          sched-tag
-         switch!)
+         switch!
+         debug-continuation!)
 (require racket/control
          reactor/data
-         (for-syntax syntax/parse))
+         (for-syntax syntax/parse syntax/srcloc))
 (module+ test (require rackunit))
 
 (define reactive-tag (make-continuation-prompt-tag 'reaction))
@@ -21,10 +22,13 @@
 (define-syntax %%
   (syntax-parser
     [(_ k:id body ...)
-     #'(begin
+     #`(begin
          (unless (continuation-prompt-available? reactive-tag)
            (raise-process-escape-error))
-         ((call/comp (lambda (k) (lambda () body ...)) reactive-tag)))]))
+         ((call/comp (lambda (kont)
+                       (let ([k (procedure-rename kont (string->symbol #,(source-location->string #'this-syntax)))])
+                         (lambda () body ...)))
+                     reactive-tag)))]))
 (define empty-calling-continuation
   (call/prompt
    (lambda () (%% k k))
@@ -39,3 +43,7 @@
 ;; switch back to the scheduler
 (define (switch!)
   (abort/cc sched-tag))
+
+(define (debug-continuation! k)
+  (call/prompt
+   (lambda () (k (lambda () (error 'debug "~a" k))))))
