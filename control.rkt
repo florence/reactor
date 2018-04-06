@@ -2,7 +2,9 @@
 (provide %%
          raise-process-escape-error
          reactive-tag
-         empty-calling-continuation)
+         empty-calling-continuation
+         sched-tag
+         switch!)
 (require racket/control
          reactor/data
          (for-syntax syntax/parse))
@@ -27,3 +29,13 @@
   (call/prompt
    (lambda () (%% k k))
    reactive-tag))
+
+;; OS tags
+
+(define sched-tag (make-continuation-prompt-tag 'sched))
+
+
+;; -> Any
+;; switch back to the scheduler
+(define (switch!)
+  (abort/cc sched-tag))

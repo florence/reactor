@@ -1,13 +1,11 @@
-#lang racket
+#lang debug racket
 (provide (all-defined-out))
 
 (require racket/generic reactor/data reactor/control racket/control)
 
-(define current-rthread
-  (make-parameter #f))
-(define current-switch!
-  (make-parameter
-   (lambda () (error 'internal "attempted to context switch outside of a reaction!"))))
+(define current-rthread-key (make-continuation-mark-key 'current-rthread-key))
+(define (current-rthread)
+  (continuation-mark-set-first (current-continuation-marks) current-rthread-key))
 
 (define (run-rthread ct t)
   (define n (find-execution-path ct t))
@@ -37,7 +35,7 @@
   ;; Effect: Removes unneeded join points
   ;; INVARNIANT: must be called during an instant, after threads have been preempted.
   (cleanup-joins! ct)
-  ;; This -> (-> ControlTree (-> Any) Any)
+  ;; This -> (-> (-> Any) Any)
   (get-control-code ct)
   ;; This -> ControlTree
   ;; a control tree to replace this one with in case it must be demoted to a leaf
@@ -61,14 +59,12 @@
    (define (build-execution-context self next)
      (unless (cons? next)
        (error 'internal "Invalid execution context!"))
-     (lambda ()
-       ((gcc self)
-        (lambda ()
-          (parameterize ([current-rthread self])
-            ((ep (first next) (rest next))))))))])
+     (define control (gcc self))
+     (define inner (ep (first next) (rest next)))
+     (lambda () (control (first next) inner)))])
 
 (define (base-get-control-code self)
-  (lambda (f)
+  (lambda (_ f)
     (define k (control-tree-k self))
     (define parent (current-rthread))
     ;; TODO this doesn't account for thread hiding
@@ -76,14 +72,14 @@
     (call-after-k self k f (lambda () (replace-child! parent self sat)))))
 
 (define (call-after-k tree k f code)
-  (parameterize ([current-rthread tree])
-    (call/prompt
-     (lambda ()
-       (k
-        (lambda ()
-          (f)
-          (code)))
-       reactive-tag))))
+  (with-continuation-mark current-rthread-key tree
+    (begin
+      (call-with-continuation-barrier
+       (lambda ()
+         (call/prompt
+          (lambda () (k f))
+          reactive-tag)))
+      (code))))
   
 
 (define (self-as-thread ct)
@@ -184,7 +180,7 @@
      (when (top-child self)
        (cj! (top-child self))))
    (define (get-control-code self)
-     (lambda (f)
+     (lambda (_ f)
        (call-after-k self empty-calling-continuation f (lambda () (set-top-child! self #f)))))
    (define (get-next-active self)
      (if (top-child self)
@@ -233,11 +229,9 @@
   [(define (find-execution-path self thread)
      (and (eq? self thread) (list self)))
    (define (build-execution-context self below)
-     (lambda ()
-       (unless (empty? below)
+     (unless (empty? below)
          (error 'internal "incorrect execution context when running thread!"))
-       (parameterize ([current-rthread self])
-         ((control-tree-k self) (rthread-f self)))))
+     (lambda () (call-after-k self (control-tree-k self) (rthread-f self) void)))
    (define (register-context-as-active! self activate! activate-on-signal!)
      (activate! self))
    (define (replace-child! ct old new)
@@ -307,8 +301,14 @@
    (define (replace-child! self old new)
      (define new-children
        (let loop ([l (par-children self)])
-         (match loop
-           [(list) (error 'internal "Thread leaked to incorrect context!")]
+         (match l
+           [(list)
+            (error 'internal
+                   "Thread leaked to incorrect context!\n context: par@~v\nchildren: ~v\n thread: ~v\nreplacement: ~v\n"
+                   (eq-hash-code self)
+                   (map eq-hash-code (par-children self))
+                   (eq-hash-code old)
+                   (eq-hash-code new))]
            [(cons a b)
             (if (eq? a old)
                 (cons new b)
@@ -330,7 +330,7 @@
                        (set-par-children! self (remq child (par-children self)))
                        (if final?
                            (rp! parent self sat)
-                           (current-switch!))))))
+                           (switch!))))))
    (define (get-next-active self)
      (append-map gna (par-children self)))
    (define (preempt-threads! self)
@@ -388,8 +388,7 @@
    (define (register-context-as-active! self activate! activate-on-signal!)
      (if (signal-status (suspend-unless-signal self))
          (rcaa! (suspend-unless-child self) activate! activate-on-signal!)
-         (activate-on-signal! (suspend-unless-signal self)
-                              (suspend-unless-child self))))
+         (activate-on-signal! self)))
    (define (replace-child! self old new)
      (unless (eq? (suspend-unless-child self) old)
        (error 'internal "Thread leaked to incorrect context!"))
@@ -403,7 +402,7 @@
      (define new (pt! (suspend-unless-child self)))
      (set-suspend-unless-child! self new)
      self)
-   (define (get-top-level-susps self) self)
+   (define (get-top-level-susps self) (list self))
    (define (continuation-mark-tree self)
      (continuation-mark-tree-cons-set
       (continuation-marks (control-tree-k self))
@@ -453,7 +452,7 @@
    (define (register-context-as-active! self activate! active-on-signal!)
      (rcaa! (preempt-when-child self)))
    (define (replace-child! self old new)
-     (unless (eq? ( preempt-when-child self) old)
+     (unless (eq? (preempt-when-child self) old)
        (error 'internal "Thread leaked to incorrect context!"))
      (set-preempt-when-child! self new))
    (define (cleanup-joins! self)

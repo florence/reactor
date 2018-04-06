@@ -96,7 +96,6 @@
 
 ;; Reactor -> Any
 ;; main scheduler loop. Should be called within a `reactive-tag`.
-(define sched-tag (make-continuation-prompt-tag 'sched))
 (define (sched! g)
   (unless (ireactor-suspended? g)
     (match-define (reactor active blocked ct susps signals safe?) g)
@@ -106,14 +105,10 @@
      (lambda ()
        (parameterize ([the-current-reactor g])
          (run-rthread (reactor-ct g) next)))
-     sched-tag)
+     sched-tag
+     void)
     (sched! g)))
 
-
-;; -> Any
-;; switch back to the scheduler
-(define (switch!)
-  (abort/cc sched-tag))
 
 ;; Signal -> Void
 ;; registers a signal emission with the OS for cleanup after the instant.

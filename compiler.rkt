@@ -16,7 +16,9 @@
  present&
  with-handlers&)
 (require "data.rkt" "runtime.rkt" "ct.rkt" "control.rkt")
-(require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax) racket/hash racket/stxparam)
+(require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax)
+         racket/control
+         racket/hash racket/stxparam)
                                                            
 
 (define-syntax-parameter in-process? #f)
@@ -94,77 +96,60 @@
     [(suspend& e:expr ... #:unless S)
      #`(%%
         k
-        (let* ([t (continue-at (lambda () e ...) empty-calling-continuation)]
-               [nt (make-suspend-unless k t S)])
+        (let ([nt (make-suspend-unless k #f S)])
           (with-extended-control
-           (lambda ()
-             (activate-suspends! nt)
-             (switch!)))
-          nt))]))
+           tk
+           nt
+           (set-suspend-unless-child! nt (continue-at (lambda () e ...) tk))
+           (activate-suspends! nt))))]))
 (define-syntax/in-process abort&
   (syntax-parser
     [(abort& e:expr ... #:after S)
-     #'(%%
-        k
-        (let ([t (continue-at
-                  (lambda () e ...)
-                  (empty-calling-continuation))])
-          (with-extended-control
-           (lambda () (activate! t) (switch!))
-           (make-preempt-when
-            k t S
-            (lambda () (continue-at void k))))))]
+     #'(abort& e ... #:after S [_ (void)])]
     [(abort& e:expr ... #:after S [pattern body ...] ...)
      #'(%%
         k
-        (with-extended-control
-         (let ([t (continue-at
-                   (lambda () e ...)
-                   (empty-calling-continuation))])
-           (lambda () (activate! t) (switch!))
-           (make-preempt-when
-            k t S
-            (lambda ()
-              (match (last S)
-                [pattern (continue-at (lambda () body ...) k)] ...
-                [_ #f]))))))]))
+        (let ([nt (make-preempt-when
+                   k #f S
+                   (lambda ()
+                     (match (last S)
+                       [pattern (continue-at (lambda () body ...) k)] ...
+                       [_ #f])))])
+          (with-extended-control
+           tk
+           nt
+           (let ([t (continue-at
+                     (lambda () e ...)
+                     tk)])
+             (set-preempt-when-child! nt t)
+             (activate! t)))))]))
 
 (define-syntax/in-process par&
   (syntax-parser
     [(par& p ...)
      #:with k (generate-temporary)
-     #:with (thread ...) #'((continue-at (lambda () p) empty-calling-continuation) ...)
+     #:with (thread ...) #'((continue-at (lambda () p) tk) ...)
      #:with (t ...) (generate-temporaries #'(thread ...))
      #'(%%
         k
-        (let ([t thread] ...
-              [ct (current-control-tree)])
-          (lambda ()
-            (activate! t) ...
-            (switch!))
+        (let ([nt (make-par k empty)])
           (with-extended-control
-           (make-par k (list t ...)))))]))
+           tk
+           nt
+           (let ([t thread] ...)
+             (set-par-children! nt (list t ...))
+             (activate! t) ...))))]))
 
-
-(define-syntax/in-process control&
+(define-syntax with-extended-control
   (syntax-parser
-    [(control e ... #:on S)
-     #'(signal*
-        (ctrl end)
-        (abort&
-         (par&
-          (suspend& e ... (emit& end) #:unless ctrl)
-          (let loop/await ()
-            (await& S)
-            (let loop/emit ()
-              (emit& S)
-              (present& S (begin pause& loop/await) (loop/emit)))))
-         #:after end))]))
-               
+    [(_ k nt body ...)
+     #'(with-extended-controlf
+        (lambda () (%% k body ... (switch!)))
+        nt)]))
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
-(define (with-extended-control body new-tree)
+(define (with-extended-controlf body new-tree)
   (replace-child! (current-control-tree) (current-rthread) new-tree)
   (parameterize ([current-control-tree new-tree])
     (body)))
