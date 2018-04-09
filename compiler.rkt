@@ -127,6 +127,8 @@
 
 (define-syntax/in-process par&
   (syntax-parser
+    [(par&) #'(void)]
+    [(par& p) #'p]
     [(par& p ...)
      #:with k (generate-temporary)
      #:with (t ...) (generate-temporaries #'(p ...))
