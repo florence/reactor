@@ -69,18 +69,17 @@
     (define parent (current-rthread))
     ;; TODO this doesn't account for thread hiding
     (define sat (self-as-thread self))
-    (call-before-k self sat k f (lambda () (replace-child! parent self sat)))))
+    (call-before-k self sat k f (lambda (v) (replace-child! parent self sat) v))))
 
 (define (call-before-k tree sat k f code)
   (with-continuation-mark current-rthread-key sat
     (k
      (lambda ()
        (with-continuation-mark current-rthread-key tree
-         (begin
+         (code
            (call-with-continuation-barrier
             (lambda ()
-              (call/prompt f reactive-tag)))
-           (code)))))))
+              (call/prompt f reactive-tag)))))))))
   
 
 (define (self-as-thread ct)
@@ -191,13 +190,14 @@
        (cj! (top-child self))))
    (define (get-control-code self)
      (lambda (_ f)
-       (call-before-k self #f empty-calling-continuation f (lambda () (set-top-child! self #f)))))
+       (call-before-k self #f empty-calling-continuation f (lambda (_) (set-top-child! self #f)))))
    (define (get-next-active self)
      (if (top-child self)
          (gna (top-child self))
          empty))
    (define (preempt-threads! self)
-     (when (top-child self) (pt! (top-child self)))
+     (when (top-child self)
+       (set-top-child! self (pt! (top-child self))))
      self)
    (define (get-top-level-susps self)
      (if (top-child self)
@@ -342,7 +342,7 @@
        ;; TODO this doesn't account for thread hiding
        (define sat (self-as-thread self))
        (call-before-k self sat k f
-                      (lambda ()
+                      (lambda (_)
                         (set-par-children! self (remq child (par-children self)))
                         (if final?
                             (rp! parent self sat)
