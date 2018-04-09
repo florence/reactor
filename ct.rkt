@@ -69,17 +69,18 @@
     (define parent (current-rthread))
     ;; TODO this doesn't account for thread hiding
     (define sat (self-as-thread self))
-    (call-after-k self k f (lambda () (replace-child! parent self sat)))))
+    (call-before-k self sat k f (lambda () (replace-child! parent self sat)))))
 
-(define (call-after-k tree k f code)
-  (with-continuation-mark current-rthread-key tree
-    (begin
-      (call-with-continuation-barrier
-       (lambda ()
-         (call/prompt
-          (lambda () (k f))
-          reactive-tag)))
-      (code))))
+(define (call-before-k tree sat k f code)
+  (with-continuation-mark current-rthread-key sat
+    (k
+     (lambda ()
+       (with-continuation-mark current-rthread-key tree
+         (begin
+           (call-with-continuation-barrier
+            (lambda ()
+              (call/prompt f reactive-tag)))
+           (code)))))))
   
 
 (define (self-as-thread ct)
@@ -88,6 +89,7 @@
 
 ;; a ControlTree is one of:
 ;;   RThread
+;;   (make-top ControlTree)
 ;;   (make-par Continuation (listof ControlTree))
 ;;   (make-suspend-unless Continuation ControlTree Signal)
 ;;   (make-preempt-when Continuation ControlTree Signal (-> (Maybe Thread)))
@@ -168,20 +170,28 @@
    (define/generic cmt continuation-mark-tree)
    (define/generic rp! replace-child!)
    (define (find-execution-path self thread)
-     (cons self (fep (top-child self) thread)))
+     (define inner (fep (top-child self) thread))
+     (and inner (cons self inner)))
    (define (register-context-as-active! self activate! activate-on-signal!)
      (when (top-child self)
        (rcaa! (top-child self) activate! activate-on-signal!)))
    (define (replace-child! ct old new)
      (unless (eq? old (top-child ct))
-       (error 'internal "thread lost context"))
+       (error 'internal "thread lost context:\n at ~a:~a\n~a\nold ~a\n~a\nnew ~a\n~a"
+              (eq-hash-code ct)
+              (eq-hash-code (top-child ct))
+              ct
+              (eq-hash-code old)
+              old
+              (eq-hash-code new)
+              new))
      (set-top-child! ct new))
    (define (cleanup-joins! self)
      (when (top-child self)
        (cj! (top-child self))))
    (define (get-control-code self)
      (lambda (_ f)
-       (call-after-k self empty-calling-continuation f (lambda () (set-top-child! self #f)))))
+       (call-before-k self #f empty-calling-continuation f (lambda () (set-top-child! self #f)))))
    (define (get-next-active self)
      (if (top-child self)
          (gna (top-child self))
@@ -220,7 +230,7 @@
 ;                                                        
 
 
-(struct rthread control-tree (f)
+(struct rthread (k f)
   #:authentic
   #:transparent
   #:mutable
@@ -230,8 +240,14 @@
      (and (eq? self thread) (list self)))
    (define (build-execution-context self below)
      (unless (empty? below)
-         (error 'internal "incorrect execution context when running thread!"))
-     (lambda () (call-after-k self (control-tree-k self) (rthread-f self) void)))
+       (error 'internal "incorrect execution context when running thread!"))
+     (lambda ()
+       (with-continuation-mark current-rthread-key self
+         (call-with-continuation-barrier
+          (lambda ()
+            (call/prompt
+             (lambda () ((rthread-k self) (rthread-f self)))
+             reactive-tag))))))
    (define (register-context-as-active! self activate! activate-on-signal!)
      (activate! self))
    (define (replace-child! ct old new)
@@ -325,12 +341,12 @@
        (define final? (empty? (rest (par-children self))))
        ;; TODO this doesn't account for thread hiding
        (define sat (self-as-thread self))
-       (call-after-k self k f
-                     (lambda ()
-                       (set-par-children! self (remq child (par-children self)))
-                       (if final?
-                           (rp! parent self sat)
-                           (switch!))))))
+       (call-before-k self sat k f
+                      (lambda ()
+                        (set-par-children! self (remq child (par-children self)))
+                        (if final?
+                            (rp! parent self sat)
+                            (switch!))))))
    (define (get-next-active self)
      (append-map gna (par-children self)))
    (define (preempt-threads! self)

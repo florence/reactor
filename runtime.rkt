@@ -1,4 +1,4 @@
-#lang racket
+#lang debug racket
 (provide emit-pure
          emit-value
          runf
@@ -293,6 +293,8 @@
   (define blocked (reactor-blocked grp))
   (define unblocked (hash-ref blocked S empty))
   (hash-remove! blocked S)
+  (for ([b (in-list unblocked)])
+    (replace-child! (blocked-parent b) (blocked-blocking b) (blocked-present b)))
   (set-reactor-active!
    grp
    (append (reactor-active grp)
@@ -313,7 +315,7 @@
   (register-context-as-active!
    sp
    activate!
-   (lambda (susp) (add-suspend! (reactor-susps (current-reactor)) sp))))
+   (lambda (susp) (add-suspend! (reactor-susps (current-reactor)) susp))))
   
 
 ;; (hasheq-of Signal SuspendUnless) (Listof SuspendUnless) -> Void

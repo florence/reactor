@@ -25,10 +25,11 @@
      #`(begin
          (unless (continuation-prompt-available? reactive-tag)
            (raise-process-escape-error))
-         ((call/comp (lambda (kont)
-                       (let ([k (procedure-rename kont (string->symbol #,(source-location->string #'this-syntax)))])
-                         (lambda () body ...)))
-                     reactive-tag)))]))
+         ((call/comp
+           (lambda (kont)
+             (let ([k (procedure-rename kont (string->symbol #,(source-location->string this-syntax)))])
+               (lambda () body ...)))
+           reactive-tag)))]))
 (define empty-calling-continuation
   (call/prompt
    (lambda () (%% k k))

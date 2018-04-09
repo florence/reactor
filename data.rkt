@@ -11,7 +11,8 @@
 ;; A Reactor is a
 ;;  (reactor (Listof Thread) (hasheqof SignalName Blocked) ControlTree (hasheqof SignalName SuspendUnless) (Listof Signal) boolean)
 (struct reactor (active blocked ct susps signals safe?)
-  #:mutable)
+  #:mutable
+  #:transparent)
 ;; `os` is the continuation for the OS loop
 ;; `active` are a list of runnable threads
 ;; `blocked` maps signals to blocked thread pairs
@@ -26,11 +27,12 @@
   #:constructor-name make-process)
 ;; `thunk` constructs the initial thread for this process, given its control tree
 
-;; a blocked is a (make-blocked ControlTree RThread RThread)
+;; a blocked is a (make-blocked ControlTree ControlTree RThread RThread)
 (struct blocked (parent blocking present absent)
   #:constructor-name make-blocked
   #:authentic)
 ;; a blocked represents a thread awaiting a signals value.
+;; the `current` value is used for looking up which thread to replace
 ;; it will run `present` if the signal is present or add `absent` to the control tree if it's not.
 
 ;; a signal is a one of

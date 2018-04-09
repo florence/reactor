@@ -1,4 +1,4 @@
-#lang racket
+#lang debug racket
 (provide
  run&
  process*
@@ -102,6 +102,7 @@
            nt
            (set-suspend-unless-child! nt (continue-at (lambda () e ...) tk))
            (activate-suspends! nt))))]))
+
 (define-syntax/in-process abort&
   (syntax-parser
     [(abort& e:expr ... #:after S)
@@ -128,31 +129,33 @@
   (syntax-parser
     [(par& p ...)
      #:with k (generate-temporary)
-     #:with (thread ...) #'((continue-at (lambda () p) tk) ...)
-     #:with (t ...) (generate-temporaries #'(thread ...))
+     #:with (t ...) (generate-temporaries #'(p ...))
      #'(%%
         k
         (let ([nt (make-par k empty)])
           (with-extended-control
            tk
            nt
-           (let ([t thread] ...)
+           (let ([t (continue-at (lambda () p) tk)] ...)
              (set-par-children! nt (list t ...))
              (activate! t) ...))))]))
 
 (define-syntax with-extended-control
   (syntax-parser
     [(_ k nt body ...)
-     #'(with-extended-controlf
-        (lambda () (%% k body ... (switch!)))
+     #`(with-extended-controlf
+        (lambda () #,(syntax/loc this-syntax (%% k body ... (switch!))))
         nt)]))
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
 (define (with-extended-controlf body new-tree)
-  (replace-child! (current-control-tree) (current-rthread) new-tree)
-  (parameterize ([current-control-tree new-tree])
-    (body)))
+  (call/prompt
+   (lambda ()
+     (replace-child! (current-control-tree) (current-rthread) new-tree)
+     (parameterize ([current-control-tree new-tree])
+       (body)))
+   reactive-tag))
 
 (define-syntax/in-process await&
   (syntax-parser
