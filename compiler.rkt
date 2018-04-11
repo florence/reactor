@@ -22,7 +22,9 @@
                                                            
 
 (define-syntax-parameter in-process? #f)
-(define current-control-tree (make-parameter #f))
+(define (current-control-tree)
+  (unless (current-reactor) (raise-process-escape-error))
+  (control-tree-parent (current-rthread)))
 
 (define-syntax define-syntax/in-process
   (syntax-parser
@@ -43,9 +45,8 @@
      #'(make-process
         (lambda (tree)
           (lambda ()
-            (parameterize ([current-control-tree tree])
-              (syntax-parameterize ([in-process? #t])
-                e ...)))))]))
+            (syntax-parameterize ([in-process? #t])
+              e ...))))]))
 (define-syntax define-process
   (syntax-parser
     [(_ name:id body ...)
@@ -100,8 +101,10 @@
           (with-extended-control
            tk
            nt
-           (set-suspend-unless-child! nt (continue-at (lambda () e ...) tk))
-           (activate-suspends! nt))))]))
+           (let ([t (continue-at (lambda () e ...) tk)])
+             (set-suspend-unless-child! nt t)
+             (reparent! t nt)
+             (activate-suspends! nt)))))]))
 
 (define-syntax/in-process abort&
   (syntax-parser
@@ -118,6 +121,7 @@
                      (lambda () e ...)
                      tk)])
              (set-preempt-when-child! nt t)
+             (reparent! t nt)
              (activate! t)))))]
     [(abort& e:expr ... #:after S [pattern body ...] ...)
      #'(%%
@@ -136,6 +140,7 @@
                      (lambda () e ...)
                      tk)])
              (set-preempt-when-child! nt t)
+             (reparent! t nt)
              (activate! t)))))]))
 
 (define-syntax/in-process par&
@@ -153,6 +158,7 @@
            nt
            (let ([t (continue-at (lambda () p) tk)] ...)
              (set-par-children! nt (list t ...))
+             (reparent! t nt) ...
              (activate! t) ...))))]))
 
 (define-syntax with-extended-control
@@ -168,8 +174,7 @@
   (call/prompt
    (lambda ()
      (replace-child! (current-control-tree) (current-rthread) new-tree)
-     (parameterize ([current-control-tree new-tree])
-       (body)))
+     (body))
    reactive-tag))
 
 (define-syntax/in-process await&

@@ -139,10 +139,14 @@
   
 
 
-(struct control-tree (k)
+(struct control-tree (k [parent #:auto])
+  #:auto-value #f
   #:authentic
   #:mutable
   #:transparent)
+
+(define (reparent! ct p)
+  (set-control-tree-parent! ct p))
 
 
 ;                             
@@ -166,11 +170,14 @@
 ;                             
 ;                             
 
-(struct top (child)
+(define (make-top)
+  (define t (top empty-calling-continuation #f))
+  (reparent! t t)
+  t)
+(struct top control-tree (child)
   #:authentic
   #:transparent
   #:mutable
-  #:constructor-name make-top
   #:methods gen:ct
   [(define/generic fep find-execution-path)
    (define/generic rcaa! register-context-as-active!)
@@ -197,16 +204,19 @@
               old
               (eq-hash-code new)
               new))
-     (set-top-child! ct new))
+     (set-top-child! ct new)
+     (reparent! new ct))
    (define (cleanup-joins! self)
      (when (top-child self)
        (define c (top-child self)) 
        (cj! (top-child self))
-       (set-top-child! self (maybe-collapse-join c))))
+       (define new (maybe-collapse-join c))
+       (set-top-child! self new)
+       (reparent! new self)))
    (define (get-control-code self)
      (lambda (f)
        (call-before-k
-        self #f empty-calling-continuation f
+        self #f (control-tree-k self) f
         (lambda (_nt _v) (set-top-child! self #f)))))
    (define (get-next-active self)
      (if (top-child self)
@@ -214,7 +224,9 @@
          empty))
    (define (preempt-threads! self)
      (when (top-child self)
-       (set-top-child! self (pt! (top-child self))))
+       (define new (pt! (top-child self)))
+       (set-top-child! self new)
+       (reparent! new self))
      self)
    (define (get-top-level-susps self)
      (if (top-child self)
@@ -342,12 +354,13 @@
                    (eq-hash-code new))]
            [(cons a b)
             (if (eq? a old)
-                (cons new b)
+                (begin (reparent! new self) (cons new b))
                 (cons a (loop b)))])))
      (set-par-children! self new-children))
    (define (cleanup-joins! self)
      (define new-threads (map maybe-collapse-join (par-children self)))
      (for-each cj! new-threads)
+     (for-each (lambda (new) (reparent! new self)) new-threads)
      (set-par-children! self new-threads)) 
    (define (get-control-code self)
      (lambda (f)
@@ -366,8 +379,9 @@
    (define (get-next-active self)
      (append-map gna (par-children self)))
    (define (preempt-threads! self)
-     (define new (map pt! (par-children self)))
-     (set-par-children! self new)
+     (define new-threads (map pt! (par-children self)))
+     (set-par-children! self new-threads)
+     (for-each (lambda (new) (reparent! new self)) new-threads)
      self)
    (define (get-top-level-susps self)
      (append-map gtls (par-children self)))
@@ -424,15 +438,19 @@
    (define (replace-child! self old new)
      (unless (eq? (suspend-unless-child self) old)
        (error 'internal "Thread leaked to incorrect context!"))
-     (set-suspend-unless-child! self new))
+     (set-suspend-unless-child! self new)
+     (reparent! new self))
    (define (cleanup-joins! self)
      (define c (suspend-unless-child self))
      (cj! c)
-     (set-suspend-unless-child! self (maybe-collapse-join c)))
+     (define new (maybe-collapse-join c))
+     (set-suspend-unless-child! self new)
+     (reparent! new self))
    (define (get-next-active self) empty)
    (define (preempt-threads! self)
      (define new (pt! (suspend-unless-child self)))
      (set-suspend-unless-child! self new)
+     (reparent! new self)
      self)
    (define (get-top-level-susps self) (list self))
    (define (continuation-mark-tree self)
@@ -486,11 +504,14 @@
    (define (replace-child! self old new)
      (unless (eq? (preempt-when-child self) old)
        (error 'internal "Thread leaked to incorrect context!"))
+     (reparent! new self)
      (set-preempt-when-child! self new))
    (define (cleanup-joins! self)
      (define c (preempt-when-child self))
      (cj! c)
-     (set-preempt-when-child! self (maybe-collapse-join c)))
+     (define new (maybe-collapse-join c))
+     (set-preempt-when-child! self new)
+     (reparent! new self))
    (define (get-next-active self)
      (gna (preempt-when-child self)))
    (define (preempt-threads! self)
@@ -502,6 +523,7 @@
            [else
             (define new (pt! (preempt-when-child self)))
             (set-preempt-when-child! self new)
+            (reparent! new self)
             self]))
    (define (get-top-level-susps self)
      (gtls (preempt-when-child self)))

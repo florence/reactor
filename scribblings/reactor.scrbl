@@ -304,7 +304,7 @@ It is never safe to share a signal between two reactors.
             (loop&
              (await& chan
                      [times
-                      (printf "got total of ~a inputs" times)])))
+                      (printf "got total of ~a inputs\n" times)])))
           (define r (prime (main input)))
           (react! r)
           (react! r)

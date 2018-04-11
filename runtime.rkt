@@ -64,11 +64,12 @@
 ;; (-> Any) -> Reactor
 ;; make a reactor containing only the given thread, which is active
 (define (make-reactor proc)
-  (define top-tree (make-top #f))
+  (define top-tree (make-top))
   (define kont #f)
   (define initial-thread
     (make-rthread empty-calling-continuation (proc top-tree)))
   (set-top-child! top-tree initial-thread)
+  (reparent! initial-thread top-tree)
   (reactor (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty #t))
 
 
