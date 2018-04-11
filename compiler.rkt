@@ -106,7 +106,17 @@
 (define-syntax/in-process abort&
   (syntax-parser
     [(abort& e:expr ... #:after S)
-     #'(abort& e ... #:after S [_ (void)])]
+     #'(%%
+        k
+        (let ([nt (make-preempt-when k #f S (lambda () (continue-at void k)))])
+          (with-extended-control
+           tk
+           nt
+           (let ([t (continue-at
+                     (lambda () e ...)
+                     tk)])
+             (set-preempt-when-child! nt t)
+             (activate! t)))))]
     [(abort& e:expr ... #:after S [pattern body ...] ...)
      #'(%%
         k

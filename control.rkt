@@ -5,7 +5,8 @@
          empty-calling-continuation
          sched-tag
          switch!
-         debug-continuation!)
+         debug-continuation!
+         compose-continuations)
 (require racket/control
          reactor/data
          (for-syntax syntax/parse syntax/srcloc))
@@ -35,9 +36,17 @@
    (lambda () (%% k k))
    reactive-tag))
 
+(define (compose-continuations k1 k2)
+  (call/prompt
+   (lambda ()
+     (k1 (lambda () (k2 (lambda () (%% k (abort/cc reactive-tag k)))))))
+   reactive-tag
+   values))
+
 ;; OS tags
 
 (define sched-tag (make-continuation-prompt-tag 'sched))
+
 
 
 ;; -> Any

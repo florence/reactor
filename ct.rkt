@@ -1,7 +1,8 @@
 #lang debug racket
 (provide (all-defined-out))
 
-(require racket/generic reactor/data reactor/control racket/control)
+(require racket/generic reactor/data reactor/control racket/control
+         syntax/parse/define)
 
 (define current-rthread-key (make-continuation-mark-key 'current-rthread-key))
 (define (current-rthread)
@@ -15,7 +16,8 @@
      "unable to find thread execution context! Thread: ~a, Context: ~a"
      t
      ct))
-  ((build-execution-context (first n) (rest n))))
+  (define-values (_ v) ((build-execution-context (first n) (rest n))))
+  v)
 
 (define (cleanup-control-tree! ct)
   (preempt-threads! ct)
@@ -52,7 +54,7 @@
   ;; This -> ContinuationMarkTree
   (continuation-mark-tree ct)
   #:fallbacks
-  [(define/generic ep build-execution-context)
+  [(define/generic bec build-execution-context)
    (define/generic gcc get-control-code)
    (define (get-control-code self)
      (base-get-control-code self))
@@ -60,26 +62,37 @@
      (unless (cons? next)
        (error 'internal "Invalid execution context!"))
      (define control (gcc self))
-     (define inner (ep (first next) (rest next)))
-     (lambda () (control (first next) inner)))])
+     (define inner (bec (first next) (rest next)))
+     (lambda () (control inner)))])
 
+;; ASSUMPTION: The implementation assumes that threads need no cleanup code
 (define (base-get-control-code self)
-  (lambda (_ f)
+  (lambda (f)
     (define k (control-tree-k self))
     (define parent (current-rthread))
     ;; TODO this doesn't account for thread hiding
     (define sat (self-as-thread self))
-    (call-before-k self sat k f (lambda (v) (replace-child! parent self sat) v))))
+    (call-before-k self sat k f (lambda (_ v) (replace-child! parent self sat) v))))
+
+(define-simple-macro (control-tree-delimit e ...)
+  (call-with-continuation-barrier
+   (lambda ()
+     (call/prompt
+      (lambda () e ...)
+      reactive-tag))))
 
 (define (call-before-k tree sat k f code)
   (with-continuation-mark current-rthread-key sat
-    (k
-     (lambda ()
-       (with-continuation-mark current-rthread-key tree
-         (code
-           (call-with-continuation-barrier
-            (lambda ()
-              (call/prompt f reactive-tag)))))))))
+    (values
+     sat
+     (control-tree-delimit
+      (k
+       (lambda ()
+         (with-continuation-mark current-rthread-key tree
+           (let-values ([(nt v)
+                         (control-tree-delimit (f))])
+            
+             (code nt v)))))))))
   
 
 (define (self-as-thread ct)
@@ -187,10 +200,14 @@
      (set-top-child! ct new))
    (define (cleanup-joins! self)
      (when (top-child self)
-       (cj! (top-child self))))
+       (define c (top-child self)) 
+       (cj! (top-child self))
+       (set-top-child! self (maybe-collapse-join c))))
    (define (get-control-code self)
-     (lambda (_ f)
-       (call-before-k self #f empty-calling-continuation f (lambda (_) (set-top-child! self #f)))))
+     (lambda (f)
+       (call-before-k
+        self #f empty-calling-continuation f
+        (lambda (_nt _v) (set-top-child! self #f)))))
    (define (get-next-active self)
      (if (top-child self)
          (gna (top-child self))
@@ -230,7 +247,7 @@
 ;                                                        
 
 
-(struct rthread (k f)
+(struct rthread control-tree (f)
   #:authentic
   #:transparent
   #:mutable
@@ -243,11 +260,9 @@
        (error 'internal "incorrect execution context when running thread!"))
      (lambda ()
        (with-continuation-mark current-rthread-key self
-         (call-with-continuation-barrier
-          (lambda ()
-            (call/prompt
-             (lambda () ((rthread-k self) (rthread-f self)))
-             reactive-tag))))))
+         (values
+          self
+          (control-tree-delimit ((control-tree-k self) (rthread-f self)))))))
    (define (register-context-as-active! self activate! activate-on-signal!)
      (activate! self))
    (define (replace-child! ct old new)
@@ -335,18 +350,19 @@
      (for-each cj! new-threads)
      (set-par-children! self new-threads))
    (define (get-control-code self)
-     (lambda (child f)
+     (lambda (f)
        (define k (control-tree-k self))
        (define parent (current-rthread))
        (define final? (empty? (rest (par-children self))))
        ;; TODO this doesn't account for thread hiding
        (define sat (self-as-thread self))
-       (call-before-k self sat k f
-                      (lambda (_)
-                        (set-par-children! self (remq child (par-children self)))
-                        (if final?
-                            (rp! parent self sat)
-                            (switch!))))))
+       (call-before-k
+        self sat k f
+        (lambda (child _)
+          (set-par-children! self (remq child (par-children self)))
+          (if final?
+              (rp! parent self sat)
+              (switch!))))))
    (define (get-next-active self)
      (append-map gna (par-children self)))
    (define (preempt-threads! self)
@@ -500,5 +516,7 @@
 (define (maybe-collapse-join ct)
   (cond
     [(and (par? ct) (empty? (rest (par-children ct))))
-     (first (par-children ct))]
+     (define f (first (par-children ct)))
+     (set-control-tree-k! f (compose-continuations (control-tree-k ct) (control-tree-k f)))
+     f]
     [else ct]))
