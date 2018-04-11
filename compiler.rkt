@@ -108,7 +108,9 @@
     [(abort& e:expr ... #:after S)
      #'(%%
         k
-        (let ([nt (make-preempt-when k #f S (lambda () (continue-at void k)))])
+        (letrec ([nt (make-preempt-when
+                      k #f S
+                      (lambda () (continue-at void (control-tree-k nt))))])
           (with-extended-control
            tk
            nt
@@ -120,12 +122,13 @@
     [(abort& e:expr ... #:after S [pattern body ...] ...)
      #'(%%
         k
-        (let ([nt (make-preempt-when
-                   k #f S
-                   (lambda ()
-                     (match (last S)
-                       [pattern (continue-at (lambda () body ...) k)] ...
-                       [_ #f])))])
+        (letrec ([nt (make-preempt-when
+                      k #f S
+                      (lambda ()
+                        (match (last S)
+                          [pattern (continue-at (lambda () body ...)
+                                                (control-tree-k nt))] ...
+                          [_ #f])))])
           (with-extended-control
            tk
            nt

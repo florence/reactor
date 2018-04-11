@@ -348,7 +348,7 @@
    (define (cleanup-joins! self)
      (define new-threads (map maybe-collapse-join (par-children self)))
      (for-each cj! new-threads)
-     (set-par-children! self new-threads))
+     (set-par-children! self new-threads)) 
    (define (get-control-code self)
      (lambda (f)
        (define k (control-tree-k self))
