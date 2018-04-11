@@ -17,7 +17,9 @@
   [signal=? (-> signal? signal? any/c)]
   [reactor-continuation-marks
    (-> (and/c reactor? reactor-safe?)
-       (listof continuation-mark-set?))]
+       continuation-mark-tree?)]
+  [continuation-mark-tree->tree
+   (-> continuation-mark-tree any/c list?)]
   [signal/c (-> contract? contract?)]
   ;; running
   [prime (-> process? reactor?)]
@@ -39,6 +41,6 @@
  loop&
  halt&
  with-handlers&)
-(require "data.rkt" "runtime.rkt" "compiler.rkt")
+(require "data.rkt" "runtime.rkt" "compiler.rkt" "ct.rkt")
 
 

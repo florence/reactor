@@ -129,8 +129,8 @@
      (cons
       (append-map (lambda (s) (continuation-mark-set->list s key)) sets)
       (map continuation-mark-tree->tree branches))]))
-(define (continuation-mark-tree-cons-set set ct)
-  (match ct
+(define (continuation-mark-tree-cons-set set tree)
+  (match tree
     [(continuation-mark-leaf sets)
      (continuation-mark-leaf (cons set sets))]
     [(continuation-mark-branch sets branches)
@@ -273,7 +273,7 @@
    (define (preempt-threads! self) self)
    (define (get-top-level-susps self) empty)
    (define (continuation-mark-tree self)
-     (continuation-marks (control-tree-k self)))])
+     (continuation-mark-leaf (continuation-marks (control-tree-k self))))])
 
 (define hide-thread? (make-parameter #f))
 
