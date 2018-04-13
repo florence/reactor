@@ -146,7 +146,6 @@
 (define-syntax/in-process par&
   (syntax-parser
     [(par&) #'(void)]
-    [(par& p) #'p]
     [(par& p ...)
      #:with k (generate-temporary)
      #:with (t ...) (generate-temporaries #'(p ...))
@@ -165,17 +164,14 @@
   (syntax-parser
     [(_ k nt body ...)
      #`(with-extended-controlf
-        (lambda () #,(syntax/loc this-syntax (%% k body ... (switch!))))
+        (lambda () (%% k body ... (switch!)))
         nt)]))
 
 ;; (-> any) ControlTree
 ;; run `body`with the control tree extended by `new-tree`
 (define (with-extended-controlf body new-tree)
-  (call/prompt
-   (lambda ()
-     (replace-child! (current-control-tree) (current-rthread) new-tree)
-     (body))
-   reactive-tag))
+  (replace-child! (current-control-tree) (current-rthread) new-tree)
+  (call/prompt body reactive-tag))
 
 (define-syntax/in-process await&
   (syntax-parser
