@@ -27,7 +27,7 @@
          (unless (continuation-prompt-available? reactive-tag)
            (raise-process-escape-error))
          ((call/comp
-           (lambda (k) (lambda () body ...))
+           (lambda (k) #,(syntax/loc this-syntax (lambda () body ...)))
            reactive-tag)))]))
 
 (define empty-calling-continuation
@@ -41,6 +41,21 @@
      (k1 (lambda () (k2 (lambda () (%% k (abort/cc reactive-tag k)))))))
    reactive-tag
    values))
+
+(module+ test
+  (define k1 (call/prompt
+              (lambda ()
+                (with-continuation-mark 1 1
+                  (%% k (abort/cc reactive-tag k))))
+              reactive-tag values))
+  (define k2 (call/prompt
+              (lambda ()
+                (with-continuation-mark 1 2
+                  (%% k (abort/cc reactive-tag k))))
+              reactive-tag values))
+  (check-equal?
+   (continuation-mark-set->list (continuation-marks (compose-continuations k2 k2)) 1)
+   (list 2)))
 
 ;; OS tags
 
