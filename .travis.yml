@@ -5,7 +5,6 @@ env:
     - RACKET_DIR=~/racket
   matrix:
     - RACKET_VERSION=HEAD
-    - RACKET_VERSION=6.12
     
 matrix:
   fast_finish: true
