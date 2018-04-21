@@ -1,4 +1,4 @@
-#lang debug racket
+#lang racket
 (provide (all-defined-out))
 
 (require racket/generic reactor/data reactor/control racket/control
