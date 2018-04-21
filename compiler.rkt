@@ -14,7 +14,8 @@
  halt&
  abort&
  present&
- with-handlers&)
+ with-handlers&
+ current-control-tree)
 (require "data.rkt" "runtime.rkt" "ct.rkt" "control.rkt")
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax)
          racket/control
@@ -152,13 +153,15 @@
      #'(%%
         k
         (let ([nt (make-par k empty)])
-          (with-extended-control
-           tk
-           nt
-           (let ([t (continue-at (lambda () p) tk)] ...)
-             (set-par-children! nt (list t ...))
-             (reparent! t nt) ...
-             (activate! t) ...))))]))
+          (replace-child! (current-control-tree) (current-rthread) nt)
+          (call/prompt
+           (lambda ()
+             (%% tk
+                 (let ([t (continue-at (lambda () p) tk)] ...)
+                   (set-par-children! nt (list t ...))
+                   (reparent! t nt) ...
+                   (activate! t) ...) (switch!)))
+           reactive-tag)))]))
 
 (define-syntax with-extended-control
   (syntax-parser
@@ -216,11 +219,12 @@
      #`(let loop ()
          (define-signal loop-check)
          (par& (begin p ... (emit& loop-check))
-               (parameterize ([hide-thread? #t])
-                 (present& loop-check
-                           #,(syntax/loc this-syntax
-                               (error 'loop& "loop& terminated in a single instant!"))
-                           (void))))
+               (hide
+                (lambda ()
+                  (present& loop-check
+                            #,(syntax/loc this-syntax
+                                (error 'loop& "loop& terminated in a single instant!"))
+                            (void)))))
          (loop))]))
 
 (define-syntax/in-process halt&
@@ -241,7 +245,7 @@
                       [(p exn) v] ...))
                   S
                   (lambda () body ...)
-                  (current-control-tree))
+                  current-control-tree)
                  #:after S
                  [vals
                   (let loop ([a vals])

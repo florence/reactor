@@ -266,7 +266,7 @@
   (register-signal-emission! S))
 
 ;(define current-exn-handler (make-parameter values))
-(define (with-handler-pred pred s f ct)
+(define (with-handler-pred pred s f gct)
   (call-with-exception-handler
    (lambda (exn)
      (cond
@@ -277,7 +277,7 @@
           (switch!))]
        [else exn]))
    (lambda ()
-     (call-with-control-safety f ct))))
+     (call-with-control-safety f gct))))
 
 ;; Signal -> Void
 ;; Unblock every thread waiting on S using its `present` continuation
@@ -395,22 +395,19 @@
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k [ignored #f])
-  (if (hide-thread?)
-      (make-hidden-rthread k f)
-      (make-rthread k f)))
+  (make-rthread k f))
 
-;; (-> Any) ControlTree -> Any
+;; (-> Any) (-> ControlTree) -> Any
 ;; call f with the reactor exn handler
-(define (call-with-control-safety f ct)
+(define (call-with-control-safety f gct)
   (call-with-exception-handler
    (lambda (exn)
      (run-next!
-      ct
-      (continue-at (lambda () (pausef ct))
+      (gct)
+      (continue-at (lambda () (pausef (gct)))
                    (lambda (f)
                      (f)
-                     (error "handler continuation should be unreachable!"))
-                   ct))
+                     (error "handler continuation should be unreachable!"))))
      exn)
    f))
 

@@ -7,6 +7,9 @@
   [value-signal? predicate/c]
   [reactor? predicate/c]
   [process? predicate/c]
+  [tree? predicate/c]
+  [struct branch ([values list?] [children (listof tree?)]) #:omit-constructor]
+  [struct leaf ([values list?]) #:omit-constructor]
   [reactor-done? (-> (and/c reactor? reactor-safe?) any/c)]
   [reactor-suspended? (-> (and/c reactor? reactor-safe?) any/c)]
   [last (-> value-signal? any/c)]
@@ -17,9 +20,9 @@
   [signal=? (-> signal? signal? any/c)]
   [reactor-continuation-marks
    (-> (and/c reactor? reactor-safe?)
-       continuation-mark-tree?)]
-  [continuation-mark-tree->tree
-   (-> continuation-mark-tree any/c list?)]
+       continuation-mark-set-tree?)]
+  [continuation-mark-set-tree->tree
+   (-> continuation-mark-set-tree? any/c tree?)]
   [signal/c (-> contract? contract?)]
   ;; running
   [prime (-> process? reactor?)]

@@ -110,33 +110,6 @@
 ;;   (make-rthread Continuation (-> Any))
 ;;   (make-hidden-rthread Continuaiton (-> Any)
 
-;; A ContinuationTree is one of
-;; (continuation-mark-leaf (Listof ContinuationMarkSet))
-;; (continuation-mark-branch (Listof ContinutionMarkSets) (Listof ContinuationMarkTree))
-(struct continuation-mark-leaf (sets)
-  #:reflection-name 'continuation-mark-tree)
-(struct continuation-mark-branch (sets branches)
-  #:reflection-name 'continuation-mark-tree)
-
-(define (continuation-mark-tree? x)
-  (or (continuation-mark-leaf? x) (continuation-mark-branch? x)))
-
-(define (continuation-mark-tree->tree cmt key)
-  (match cmt
-    [(continuation-mark-leaf sets)
-     (append-map (lambda (set) (continuation-mark-set->list set key)) sets)]
-    [(continuation-mark-branch sets branches)
-     (cons
-      (append-map (lambda (s) (continuation-mark-set->list s key)) sets)
-      (map continuation-mark-tree->tree branches))]))
-(define (continuation-mark-tree-cons-set set tree)
-  (match tree
-    [(continuation-mark-leaf sets)
-     (continuation-mark-leaf (cons set sets))]
-    [(continuation-mark-branch sets branches)
-     (continuation-mark-branch (cons set sets) branches)]))
-    
-  
 
 
 (struct control-tree (k [parent #:auto])
@@ -285,15 +258,21 @@
    (define (preempt-threads! self) self)
    (define (get-top-level-susps self) empty)
    (define (continuation-mark-tree self)
-     (continuation-mark-leaf (continuation-marks (control-tree-k self))))])
+     (continuation-mark-leaf (list (continuation-marks (control-tree-k self)))))])
 
-(define hide-thread? (make-parameter #f))
 
-(struct hidden-rthread rthread ()
-  #:authentic
-  #:transparent)
-(define (make-hidden-rthread k f)
-  (hidden-rthread k (lambda () (parameterize ([hide-thread? #t]) (f)))))
+(define hidden-thread-key (make-continuation-mark-key 'thread-hiding))
+(define (hide-thread? [k #f])
+  (continuation-mark-set-first 
+   (if k (continuation-marks k) (current-continuation-marks))
+   hidden-thread-key #f))
+
+(define (immediately-hidden? n)
+  (hide-thread? (control-tree-k n)))
+
+(define (hide f)
+  (with-continuation-mark hidden-thread-key #t
+    (call-with-values values f)))
 
 
 ;                             
@@ -317,7 +296,7 @@
 ;                             
 ;                             
 
-
+;; INVARIANT: `children` is never empty
 (struct par control-tree (children)
   #:mutable
   #:constructor-name make-par
@@ -454,7 +433,7 @@
      self)
    (define (get-top-level-susps self) (list self))
    (define (continuation-mark-tree self)
-     (continuation-mark-tree-cons-set
+     (continuation-mark-set-tree-cons
       (continuation-marks (control-tree-k self))
       (cmt (suspend-unless-child self))))])
 
@@ -528,7 +507,7 @@
    (define (get-top-level-susps self)
      (gtls (preempt-when-child self)))
    (define (continuation-mark-tree self)
-     (continuation-mark-tree-cons-set
+     (continuation-mark-set-tree-cons
       (continuation-marks (control-tree-k self))
       (cmt (preempt-when-child self))))])
            
@@ -542,3 +521,63 @@
      (set-control-tree-k! f (compose-continuations (control-tree-k ct) (control-tree-k f)))
      f]
     [else ct]))
+
+
+;                                               
+;                                               
+;                                               
+;                                               
+;                              ;;               
+;   ;;   ;;                    ;;               
+;   ;;   ;;                    ;;               
+;   ;;; ;;;   ;;;     ;;;; ;;  ;;   ;;    ;;;;  
+;   ;;; ;;;   ;;;;;   ;;;;;;;  ;;  ;;    ;;;;;; 
+;   ;;; ;;;       ;;    ;;;    ;; ;;    ;;      
+;   ;;; ;;;     ;;;;    ;;     ;;;;;     ;;;    
+;   ;; ; ;;   ;;;;;;    ;;     ;;;;;       ;;;  
+;   ;; ; ;;  ;;   ;;    ;;     ;; ;;;        ;; 
+;   ;;   ;;  ;;;;;;;  ;;;;;;   ;;  ;;   ;;;;;;  
+;   ;;   ;;   ;;; ;;  ;;;;;;   ;;   ;;  ;;;;;   
+;                                               
+;                                               
+;                                               
+;                                               
+;                                               
+
+
+;; A ContinuationTree is one of
+;; (continuation-mark-leaf (Listof ContinuationMarkSet))
+;; (continuation-mark-branch (Listof ContinutionMarkSets) (Listof ContinuationMarkTree))
+(struct continuation-mark-leaf (sets)
+  #:reflection-name 'continuation-mark-set-tree)
+(struct continuation-mark-branch (sets branches)
+  #:reflection-name 'continuation-mark-set-tree)
+
+(struct branch (values children)
+  #:transparent)
+(struct leaf (values)
+  #:transparent)
+(define (tree? x) (or (branch? x) (leaf? x)))
+
+
+(define (continuation-mark-set-tree? x)
+  (or (continuation-mark-leaf? x) (continuation-mark-branch? x)))
+
+(define (continuation-mark-set-tree->tree cmt key)
+  (define (get-marks s) (reverse (continuation-mark-set->list s key)))
+  (match cmt
+    [(continuation-mark-leaf sets)
+     (leaf (append-map get-marks sets))]
+    [(continuation-mark-branch sets branches)
+     (branch
+      (append-map get-marks sets)
+      (map (lambda (s) (continuation-mark-set-tree->tree s key)) branches))]))
+(define (continuation-mark-set-tree-cons set tree)
+  (match tree
+    [(continuation-mark-leaf sets)
+     (continuation-mark-leaf (cons set sets))]
+    [(continuation-mark-branch sets branches)
+     (continuation-mark-branch (cons set sets) branches)]))
+    
+  
+
