@@ -53,11 +53,18 @@
           [(list a b) (emit-value a b)]
           [a (emit-pure a)])))
     (sched! grp))
+
+
   
-  (call-with-continuation-barrier
-   (lambda ()
-     (call/prompt start reactive-tag)
-     (cleanup! grp)))
+  (with-handlers ([void
+                   ;; prevent `call-with-exception-handler` from running within
+                   ;; the reaction itself. Necessary to prevent state leaking between
+                   ;; reactors. 
+                   raise])
+    (call-with-continuation-barrier
+     (lambda ()
+       (call/prompt start reactive-tag)
+       (cleanup! grp))))
   
   (reactor-safe! grp))
 
@@ -267,17 +274,22 @@
 
 ;(define current-exn-handler (make-parameter values))
 (define (with-handler-pred pred s f gct)
-  (call-with-exception-handler
-   (lambda (exn)
-     (cond
-       [(pred exn)
-        =>
-        (lambda (v)
-          (emit-value s (list (list v exn)))
-          (switch!))]
-       [else exn]))
-   (lambda ()
-     (call-with-control-safety f gct))))
+  ;; TODO its unclear to me how to
+  ;; have a good test case for
+  ;; aborting the inner part of
+  ;; the continuation here instead of
+  ;; just using "call-with-exception-handler"
+  ;; but at least breaks are (more) correct in this version?
+  (with-handlers ([void
+                   (lambda (exn)
+                     (cond
+                       [(pred exn)
+                        =>
+                        (lambda (v)
+                          (emit-value s (list (list v exn)))
+                          (switch!))]
+                       [else (raise exn)]))])
+    (call-with-control-safety f gct)))
 
 ;; Signal -> Void
 ;; Unblock every thread waiting on S using its `present` continuation
@@ -355,11 +367,6 @@
                   (hash-ref blocked (signal-name S) empty)))
       (switch!))]))
 
-;; (Keyof (Pairof (Boxof Boolean) DeleteTag)
-(define continuation-deletion-state-key
-  (make-continuation-mark-key 'continuation-deletion-state-key))
-(define (get-continuation-mark-deletion-state)
-  (continuation-mark-set->list (current-continuation-marks) continuation-deletion-state-key))
 
 (define emitf
   (case-lambda
@@ -391,7 +398,7 @@
 (define (run-next! ct thread)
   (replace-child! ct (current-rthread) thread))
 
-;; (-> A) ((-> A) -> Nothing) [ControlTree] -> RThread
+;; (-> A) (and continuation? ((-> A) -> Nothing)) [ControlTree] -> RThread
 ;; return a function that runs f, then jumps to k with the result of `(f)`,
 ;; all under the current parameterization
 (define (continue-at f k [ignored #f])
@@ -405,6 +412,7 @@
      (run-next!
       (gct)
       (continue-at (lambda () (pausef (gct)))
+                   ;; TODO: This is not a continuation!!
                    (lambda (f)
                      (f)
                      (error "handler continuation should be unreachable!"))))

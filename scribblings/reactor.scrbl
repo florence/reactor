@@ -498,9 +498,11 @@ look at during a reaction.
 
 @subsection{Caveat concerning exception handling and control jumps}
 
-Catching an exception using @racket[with-handlers], catching
+Catching an exception using @racket[with-handlers]
+or @racket[call-with-exception-handler], capturing and 
 and applying a continuation inside of a reaction, or
-aborting to a prompt inside of a reaction is unsafe. For
+aborting to a prompt inside of a reaction is unsafe if
+any of these cross a continuation containing any reactive form. For
 example, if an exception passed through a @racket[par&],
 @racket[suspend&], or @racket[abort&] for the reactors
 control structure may become corrupted, and the reaction
