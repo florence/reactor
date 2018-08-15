@@ -477,7 +477,7 @@ It is never safe to share a signal between two reactors.
 @section{Caveats and unstable API's}
 
 
-@bold{Warning:} The API's and behaviors presented here is especially unstable, and may
+@bold{Warning:} The API's and behaviors presented here are especially unstable, and may
 change without warning.
 
 
@@ -508,9 +508,9 @@ example, if an exception passed through a @racket[par&],
 control structure may become corrupted, and the reaction
 behavior and the state of its signals is unspecified.
 Control may safely leave the reactor in this way, but the
-machine itself is marked as unsafe and can no longer react.
+reactor is marked as unsafe.
 
-Catching exceptions with @racket[with-handlers&] is safe.
+However, Catching exceptions with @racket[with-handlers&] is safe.
 
 
 

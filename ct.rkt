@@ -392,7 +392,6 @@
 ;                                                                 
 
 
-;; a node with may children
 (struct suspend-unless control-tree (child signal)
   #:mutable
   #:constructor-name make-suspend-unless

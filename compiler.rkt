@@ -242,7 +242,8 @@
                  (with-handler-pred
                   (lambda (exn)
                     (cond
-                      [(p exn) v] ...))
+                      [(p exn) v] ...
+                      [else #f]))
                   S
                   (lambda () body ...)
                   current-control-tree)

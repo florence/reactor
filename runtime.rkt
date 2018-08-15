@@ -395,6 +395,7 @@
 ;
 
 ;; ControlTree RThread -> Void
+;; mark the current thread as having reached RThread's, and not schedulable until next instant.
 (define (run-next! ct thread)
   (replace-child! ct (current-rthread) thread))
 
@@ -409,15 +410,21 @@
 (define (call-with-control-safety f gct)
   (call-with-exception-handler
    (lambda (exn)
-     (run-next!
-      (gct)
-      (continue-at (lambda () (pausef (gct)))
-                   ;; TODO: This is not a continuation!!
-                   (lambda (f)
-                     (f)
-                     (error "handler continuation should be unreachable!"))))
+     (unsafe-assume-thread-will-die! gct)
      exn)
    f))
+
+;; (-> control-tree) -> void
+;; Explain to the system that the current thread is going to be removed before the end of the instant,
+;; but must be in place until cleanup. It is unsafe for the thread to be schedulable ever again.
+(define (unsafe-assume-thread-will-die! gct)
+  (replace-child! (gct)
+                  (current-rthread)
+                  (make-rthread empty-calling-continuation
+                                (lambda ()
+                                  (error
+                                   'internal
+                                   "Thread should be unresumable after marked as dead")))))
 
 ;; safe-reactor -> continuation-mark-tree
 (define (reactor-continuation-marks r)
