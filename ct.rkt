@@ -72,7 +72,7 @@
     (define parent (current-rthread))
     ;; TODO this doesn't account for thread hiding
     (define sat (self-as-thread self))
-    (call-before-k self sat k f (lambda (_ v) (replace-child! parent self sat) v))))
+    (call-with-continunation-mark-interleaving-and-cleanup self sat k f (lambda (_ v) (replace-child! parent self sat) v))))
 
 (define-simple-macro (control-tree-delimit e ...)
   (call-with-continuation-barrier
@@ -81,7 +81,7 @@
       (lambda () e ...)
       reactive-tag))))
 
-(define (call-before-k tree sat k f code)
+(define (call-with-continunation-mark-interleaving-and-cleanup tree sat k f code)
   (with-continuation-mark current-rthread-key sat
     (values
      sat
@@ -188,7 +188,7 @@
        (reparent! new self)))
    (define (get-control-code self)
      (lambda (f)
-       (call-before-k
+       (call-with-continunation-mark-interleaving-and-cleanup
         self #f (control-tree-k self) f
         (lambda (_nt _v) (set-top-child! self #f)))))
    (define (get-next-active self)
@@ -348,7 +348,7 @@
        (define final? (empty? (rest (par-children self))))
        ;; TODO this doesn't account for thread hiding
        (define sat (self-as-thread self))
-       (call-before-k
+       (call-with-continunation-mark-interleaving-and-cleanup
         self sat k f
         (lambda (child _)
           (set-par-children! self (remq child (par-children self)))
