@@ -1,5 +1,5 @@
 #lang racket
-(require (except-in reactor branch leaf) (only-in reactor/ct hide-thread? branch leaf))
+(require (except-in reactor branch leaf) (only-in reactor/ct hidden-thread-key hide-thread? branch leaf))
 (module+ test
   (require rackunit)
   
@@ -26,6 +26,15 @@
    (check-equal?
     (continuation-mark-set-tree->tree (reactor-continuation-marks r) 1)
     (branch (list 1) (list (leaf (list 2)) (leaf (list 3))))))
+  (test-begin
+   (define r
+     (prime
+      (process
+       (par& pause& pause&))))
+   (react! r)
+   (check-equal?
+    (continuation-mark-set-tree->tree (reactor-continuation-marks r) 1)
+    (branch empty (list (leaf empty) (leaf empty)))))
 
  
   (test-begin
@@ -56,18 +65,17 @@
    (check-equal?
     (continuation-mark-set-tree->tree (reactor-continuation-marks r) 1)
     (leaf (list 1))))
-  #;
+  
   (test-begin
    (define r
      (prime
       (process
        (par& pause&
-             (parameterize ([hide-thread? #t]) pause&)))))
+             (with-continuation-mark hidden-thread-key #t pause&)))))
    (react! r)
-   (check-equal? 
-   (check-equal? (length (reactor-continuation-marks r))
-                 1)))
-  #;
+   (check-equal? (continuation-mark-set-tree->tree (reactor-continuation-marks r) 1)
+                 (leaf empty)))
+  
   (test-begin
    ;; NOTE this test is about making sure
    ;; hidden threads stay hidden. If the implementation of loop stops relying on
@@ -77,8 +85,8 @@
       (process
        (loop& pause&))))
    (react! r)
-   (check-equal? (length (reactor-continuation-marks r))
-                 1))
+   (check-equal? (continuation-mark-set-tree->tree (reactor-continuation-marks r) 1)
+                 (leaf empty)))
   (test-begin
    (define-signal S)
    (define r

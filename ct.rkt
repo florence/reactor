@@ -53,6 +53,8 @@
   (get-top-level-susps ct)
   ;; This -> ContinuationMarkTree
   (continuation-mark-tree ct)
+  ;; This -> Boolean
+  (hidden? ct)
   #:fallbacks
   [(define/generic bec build-execution-context)
    (define/generic gcc get-control-code)
@@ -63,7 +65,9 @@
        (error 'internal "Invalid execution context!"))
      (define control (gcc self))
      (define inner (bec (first next) (rest next)))
-     (lambda () (control inner)))])
+     (lambda () (control inner)))
+   (define (hidden? self)
+     (hide-thread? (control-tree-k self)))])
 
 ;; ASSUMPTION: The implementation assumes that threads need no cleanup code
 (define (base-get-control-code self)
@@ -98,7 +102,6 @@
   
 
 (define (self-as-thread ct)
-  ;; TODO thread hiding
   (make-rthread (control-tree-k ct) void))
 
 ;; a ControlTree is one of:
@@ -314,6 +317,7 @@
    (define/generic gtls get-top-level-susps)
    (define/generic cmt continuation-mark-tree)
    (define/generic rp! replace-child!)
+   (define/generic hd? hidden?)
    (define (find-execution-path self thread)
      (define next
        (for/or ([p (in-list (par-children self))])
@@ -367,9 +371,16 @@
    (define (get-top-level-susps self)
      (append-map gtls (par-children self)))
    (define (continuation-mark-tree self)
-     (define top (continuation-marks (control-tree-k self)))
-     (define children (map cmt (par-children self)))
-     (continuation-mark-branch (list top) children))])
+     (cond [(hd? self)
+            (continuation-mark-leaf empty)]
+           [else
+            (define top (continuation-marks (control-tree-k self)))
+            (define children (map cmt (filter-not hd? (par-children self))))
+            (cond
+              [(empty? (rest children))
+               (continuation-mark-set-tree-cons top (first children))]
+              [else
+               (continuation-mark-branch (list top) children)])]))])
 
 
 ;                                                                 
@@ -408,6 +419,7 @@
    (define/generic pt! preempt-threads!)
    (define/generic gtls get-top-level-susps)
    (define/generic cmt continuation-mark-tree)
+   (define/generic hd? hidden?)
    (define (find-execution-path self thread)
      (define next (fep (suspend-unless-child self) thread))
      (and next (cons self next)))
@@ -434,9 +446,11 @@
      self)
    (define (get-top-level-susps self) (list self))
    (define (continuation-mark-tree self)
-     (continuation-mark-set-tree-cons
-      (continuation-marks (control-tree-k self))
-      (cmt (suspend-unless-child self))))])
+     (if (hd? self)
+         (continuation-mark-leaf empty)
+         (continuation-mark-set-tree-cons
+          (continuation-marks (control-tree-k self))
+          (cmt (suspend-unless-child self)))))])
 
 
 ;                                                                 
@@ -476,6 +490,7 @@
    (define/generic pt! preempt-threads!)
    (define/generic gtls get-top-level-susps)
    (define/generic cmt continuation-mark-tree)
+   (define/generic hd? hidden?)
    (define (find-execution-path self thread)
      (define next (fep (preempt-when-child self) thread))
      (and next (cons self next)))
@@ -508,9 +523,11 @@
    (define (get-top-level-susps self)
      (gtls (preempt-when-child self)))
    (define (continuation-mark-tree self)
-     (continuation-mark-set-tree-cons
-      (continuation-marks (control-tree-k self))
-      (cmt (preempt-when-child self))))])
+     (if (hd? self)
+         (continuation-mark-leaf empty)
+         (continuation-mark-set-tree-cons
+          (continuation-marks (control-tree-k self))
+          (cmt (preempt-when-child self)))))])
            
 ;; tree is removed at the end of instant when the signal is present
 
