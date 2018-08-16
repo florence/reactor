@@ -9,6 +9,7 @@
  emit&
  pause&
  await&
+ await*&
  suspend&
  loop&
  halt&
@@ -16,8 +17,9 @@
  present&
  with-handlers&
  current-control-tree)
-(require "data.rkt" "runtime.rkt" "ct.rkt" "control.rkt")
-(require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax)
+(require reactor/data reactor/runtime reactor/ct reactor/control)
+(require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax seq-no-order
+                     racket/sequence)
          racket/control
          racket/hash racket/stxparam)
                                                            
@@ -61,18 +63,28 @@
     [(present& S p q)
      #'(presentf (current-control-tree) S (lambda () p) (lambda () q))]))
 
-(define ((raise-signal-error s) a b)
+(define ((raise-signal-error s n) . a)
+  (define-values (l r) (split-at a n))
   (error 'emit& "attempted to emit a value signal with no gather function twice: ~a ~v ~v"
-         s a b))
+         s l r))
+
 (define-syntax define-signal
   (syntax-parser
     [(_ S:id)
      #'(define S (make-pure-signal 'S))]
-    [(_ S:id default:expr)
-     #'(define-signal S default #:gather (raise-signal-error 'S))]
-    [(_ S:id default:expr #:gather gather:expr)
-     #'(define S
-         (make-value-signal 'S default empty gather))]))
+    [(_ S:id default:expr ...)
+     (quasisyntax/loc this-syntax
+       (define-signal S default ...
+         #:gather (raise-signal-error 'S #,(length (syntax-e #'(default ...))))))]
+    [(_ S:id (~seq-no-order (~seq default:expr ...) (~seq #:gather gather:expr)))
+     (syntax/loc this-syntax (define-signal S default ... #:gather gather #:contract any/c))]
+    [(_ S:id (~seq-no-order (~seq default:expr ...)
+                            (~seq #:gather gather:expr)
+                            (~seq #:contract /c)))
+     (syntax/loc this-syntax
+       (define/contract S /c
+         (make-value-signal 'S (list default ...) empty gather)))]))
+
 (define-syntax signal*
   (syntax-parser
     [(signal S:id e) #'(signal (S) e)]
@@ -80,9 +92,9 @@
      #'(let ()
          (define-signal S) ...
          e ...)]
-    [(signal ([S:id default:expr #:gather gather:expr] ...) e ...)
+    [(signal ([S:id default:expr ... #:gather gather:expr] ...) e ...)
      #'(let ()
-         (define-signal S default #:gather gather) ...
+         (define-signal S default ... #:gather gather) ...
          e ...)]))
 
 (define-syntax/in-process pause&
@@ -205,12 +217,18 @@
              (await& s)
              (loop (sub1 c)))))]
     [(await& S [pat:expr body:expr ...] ...)
+     #'(await*& S [(pat) body ...] ...)]))
+
+(define-syntax/in-process await*&
+  (syntax-parser
+    [(_ S [(pat:expr ...) body:expr ...] ...)
+     #:with under (for/list ([_ (in-syntax (car (syntax-e #'((pat ...) ...))))]) #'_)
      #'(let ()
          (define f
            (lambda (v)
-             (match v
-               [pat body ...] ...
-               [_ (run& (await-value S f))])))
+             (match/values (apply values v)
+               [(pat ...) body ...] ...
+               [under (run& (await-value S f))])))
          (run& (await-value S f)))]))
 
 (define-syntax/in-process loop&
@@ -273,4 +291,4 @@
 (define-process (await-value S f)
   (await& #:immediate S)
   pause&
-  (f (last S)))
+  (f (value-signal-value S)))

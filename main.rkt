@@ -12,9 +12,9 @@
   [struct leaf ([values list?]) #:omit-constructor]
   [reactor-done? (-> (and/c reactor? reactor-safe?) any/c)]
   [reactor-suspended? (-> (and/c reactor? reactor-safe?) any/c)]
-  [last (-> value-signal? any/c)]
-  [last? (-> signal? any)]
-  [default (-> value-signal? any/c)]
+  [last (-> value-signal? any)]
+  [last? (-> signal? any/c)]
+  [default (-> value-signal? any)]
   [reactor-safe? (-> reactor? any/c)]
   [signal-name (-> signal? (and/c symbol? (not/c symbol-interned?)))]
   [signal=? (-> signal? signal? any/c)]
@@ -23,14 +23,14 @@
        continuation-mark-set-tree?)]
   [continuation-mark-set-tree->tree
    (-> continuation-mark-set-tree? any/c tree?)]
-  [signal/c (-> contract? contract?)]
   ;; running
   [prime (-> process? reactor?)]
-  [react! (-> (and/c reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? any/c)) ... any)])
+  [react! (-> (and/c reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? (listof any/c))) ... any)])
  ;; process creation
  (rename-out [process* process])
  define-process
  ;; forms
+ signal/c
  run&
  present&
  (rename-out [signal* signal])
@@ -39,6 +39,7 @@
  emit&
  pause&
  await&
+ await*&
  suspend&
  abort&
  loop&

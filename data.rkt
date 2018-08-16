@@ -1,5 +1,6 @@
 #lang racket
 (provide (all-defined-out))
+(require syntax/parse/define)
 
 ;; ExternalReactor -> Void
 (define (reactor-unsafe! r)
@@ -86,6 +87,8 @@
                 default default collection gather))
 
 
-(define (signal/c /c)
-  (struct/c value-signal any/c any/c any/c any/c /c /c any/c (-> /c /c /c)))
+(define-simple-macro (signal/c /c:expr ...)
+  #:with (x ...) (generate-temporaries #'(/c ...))
+  (let ([x /c] ...)
+    (struct/c value-signal any/c any/c any/c any/c (list/c x ...) (list/c x ...) any/c (-> x ... x ... x ...))))
 

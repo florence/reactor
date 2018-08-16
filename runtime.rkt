@@ -42,7 +42,7 @@
 (define (prime proc)
   (make-reactor (process-thunk proc)))
 
-;; Reactor (Listof (or PureSignal (List ValueSignal Any))) -> Any
+;; Reactor (Listof (or PureSignal (List ValueSignal (list Any ...)))) -> Any
 ;; run a reaction on this reactor
 (define (react! grp . signals)
   (reactor-unsafe! grp)
@@ -50,7 +50,7 @@
     (parameterize ([the-current-reactor grp])
       (for ([i (in-list signals)])
         (match i
-          [(list a b) (emit-value a b)]
+          [(list a b) (apply emit-value a b)]
           [a (emit-pure a)])))
     (sched! grp))
 
@@ -215,7 +215,10 @@
     (define c (value-signal-collection S))
     (set-value-signal-value!
      S
-     (foldl (value-signal-gather S) (first c) (rest c)))
+     (foldl (lambda (a b)
+              (call-with-values (lambda () (apply (value-signal-gather S) (append a b))) list))
+            (first c)
+            (rest c)))
     (set-value-signal-collection! S empty))
   (set-signal-last?! S (signal-status S))
   (when (signal-status S)
@@ -246,9 +249,11 @@
 
 
 ;; ValueSignal -> Any
-(define last value-signal-value)
+(define (last S)
+  (apply values (value-signal-value S)))
 (define last? signal-last?)
-(define default value-signal-default)
+(define (default S)
+  (apply values (value-signal-default S)))
 
 ;; Process -> Any
 (define (runf proc control-tree) (((process-thunk proc) control-tree)))
@@ -263,7 +268,7 @@
 
 ;; ValueSignal Any -> Void
 ;; emit the given value on the signal
-(define (emit-value S v)
+(define (emit-value S . v)
   (unless (value-signal? S)
     (error 'emit& "Expected value carrying signal, given ~s and ~s" S v))
   (set-signal-status! S #t)
@@ -371,7 +376,7 @@
 (define emitf
   (case-lambda
     [(S) (emit-pure S)]
-    [(S v) (emit-value S v)]))
+    [(S . v) (apply emit-value S v)]))
 
 ;                                                                 
 ;                                                                 

@@ -87,7 +87,7 @@
      (prime
       (process
        (emit& O (abort& halt& #:after kill [1 1])))))
-   (react! r (list kill 1))
+   (react! r (list kill (list 1)))
    (check-false (last? O))
    (react! r)
    (check-true (last? O))
@@ -99,11 +99,11 @@
      (prime
       (process
        (emit& O (abort& halt& #:after kill [2 2])))))
-   (react! r (list kill 1))
+   (react! r (list kill (list 1)))
    (check-false (last? O))
    (react! r)
    (check-false (last? O))
-   (react! r (list kill 2))
+   (react! r (list kill (list 2)))
    (check-false (last? O))
    (react! r)
    (check-true (last? O))
@@ -120,7 +120,7 @@
    (check-false (last? O))
    (react! r)
    (check-false (last? O))
-   (react! r (list kill 2))
+   (react! r (list kill (list 2)))
    (check-false (last? O))
    (react! r)
    (check-true (last? O))
@@ -155,7 +155,7 @@
     (define-signal O 0 #:gather +)
     (define r (prime (process (loop& (await& S [v (emit& O (add1 v))])))))
     (for ([i (in-range 10)])
-      (react! r (list S i))
+      (react! r (list S (list i)))
       (react! r)
       (check-true (last? O))
       (check-equal? (last O) (add1 i))))

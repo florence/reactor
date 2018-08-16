@@ -33,11 +33,11 @@ reaction.
 }
 
 @defproc[(react! [r (and/c reactor? reactor-safe?)]
-                 [start-signals (or/c pure-signal? (list/c value-signal? any/c))] ...)
+                 [start-signals (or/c pure-signal? (list/c value-signal? (listof any/c)))] ...)
          any]{
 
  Run one reaction in the reactor. The reactions begins by
- emitting the given signals with the given value.
+ emitting the given signals with the given values.
 
 }
 
@@ -197,18 +197,27 @@ within a Reactor, and between a reactor and its environment.
 It is never safe to share a signal between two reactors.
 
 @defform*[((define-signal S)
-           (define-signal S default)
-           (define-signal S default #:gather gather))]{
+           (define-signal S default ...)
+           (define-signal S default ... #:gather gather)
+           (define-signal S default ... #:gather gather #:contract contract))]{
 
  Defines a new signal. The first variant defines a pure
  signal, with no value. The second and third variants define
- a value-carrying signal. The default value on the signal
- will be @racket[default]. Multiple emissions of the signal
- will be combined with @racket[gather] which should be a
- associative procedure of two arguments. If no gather
- function is provided an error is raised if the signal is
- emitted twice in the same instant. The value emitted on a
- signal can only be observe in the next instant.
+ a value-carrying signal, which may carry multiple values.
+ The default values on the signal will be @racket[default].
+ Multiple emissions of the signal will be combined with
+ @racket[gather] which should be a associative procedure of
+ twice as many arguments as the signal has values, and should
+ return as many values. When the gather function is applied
+ all of the values of one emission with be supplied before
+ the values of another, in order. If no gather function is
+ provided an error is raised if the signal is emitted twice
+ in the same instant. The value emitted on a signal can only
+ be observe in the next instant.
+
+ When @racket[contract] is supplied the signal is protected by a that contract.
+
+ The defaut values, gather function, and contract may be supplied in any order.
 
  
                                                      
@@ -223,10 +232,10 @@ It is never safe to share a signal between two reactors.
 }
 
 @defproc*[([(emit& [S pure-signal?]) void?]
-           [(emit& [S value-signal?] [v any]) void?])]{
+           [(emit& [S value-signal?] [v any/c] ...) void?])]{
 
  Emits a signal in the current instant. If the signal
- carries a value, one must be given.
+ carries values, they must be given.
 
  @valid
  
@@ -243,7 +252,8 @@ It is never safe to share a signal between two reactors.
 }
 
 @defform*[((await& maybe-immediate maybe-count S)
-           (await& S [pattern body ...] ...+))
+           (await& S [pattern body ...] ...+)
+           (await*& S [(pattern ...) body ...] ...+))
           #:grammar ([maybe-immediate (code:line) #:immediate]
                      [maybe-count (code:line) (code:line #:immediate n)])]{
 
@@ -259,7 +269,8 @@ It is never safe to share a signal between two reactors.
  signal. In this case the value is matched against the given
  patterns in the reaction after @racket[S] is emitted. It evaluates to the
  @racket[body] of the first match. If none match the form
- continues to await the signal.
+ continues to await the signal. The @racket[await&] form matches only signals that
+ carry a single value. The @racket[await*&] form can match many valued signals.
 
  @valid
  
@@ -268,7 +279,7 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(last [S value-signal?]) any]{
 
- Gets the value of @racket[S] in the previous instant.
+ Gets the values of @racket[S] in the previous instant.
                                         
 }
 
@@ -280,7 +291,7 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(default [S value-signal?]) any]{
 
- Gets the value that @racket[S] was initialized with.
+ Gets the values that @racket[S] was initialized with.
                                         
 }
 
@@ -407,7 +418,7 @@ It is never safe to share a signal between two reactors.
 
 }
 
-@defproc[(signal/c [c contract?]) contract]{
+@defform[(signal/c c ...)]{
 
  Creates a contract for value signals that contain @racket[c].
 

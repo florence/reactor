@@ -149,7 +149,7 @@
 
    (react! r inputs-changed)
    (check-true (last? disable-run))
-   (react! r (list inputs-changed-to "("))
+   (react! r (list inputs-changed-to (list "(")))
    (check-true (last? disable))
    (react! r)
    (react! r)
@@ -171,7 +171,7 @@
         (loop&
          (await& O
            [v (void)]))))))
-   (react! r (list S ""))
+   (react! r (list S (list "")))
    (check-false (reactor-done? r))
    (check-false (reactor-suspended? r))
    (react! r)

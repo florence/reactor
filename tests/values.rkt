@@ -11,39 +11,7 @@
    (react! r)
    (check-true (last? S))
    (check-equal? (last S) 1))
-  #;
-  (test-begin
-   (define-signal S empty #:gather append)
-   (define r
-     (prime
-      (process
-       (emit& S (begin pause& (par& 1 2))))))
-   (react! r)
-   (check-false (last? S))
-   (react! r)
-   (check-true (last? S))
-   (check-equal? (last S) (void)))
-  #;
-  (test-begin
-   (define-signal S empty #:gather append)
-   (define-signal S2 empty #:gather append)
-   (define r
-     (prime
-      (process
-       (par&
-        (emit& S (begin pause& (par& 1 2)))
-        (emit& S2 (await& S [v (reverse v)]))))))
-   (react! r)
-   (check-false (last? S))
-   (check-false (last? S2))
-   (react! r)
-   (check-true (last? S))
-   (check-equal? (last S) (void))
-   (check-false (last? S2))
-   (react! r)
-   (check-false (last? S))
-   (check-true (last? S2))
-   (check-equal? (last S2) (list 2 1)))
+  
 
   (test-begin
    (define-signal susp)
@@ -102,7 +70,7 @@
      (prime
       (process
        (emit& O (abort& halt& #:after kill [x x])))))
-   (react! r (list kill 1))
+   (react! r (list kill (list 1)))
    (check-false (last? O))
    (react! r)
    (check-true (last? O))
