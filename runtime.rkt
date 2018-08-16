@@ -418,6 +418,7 @@
 ;; Explain to the system that the current thread is going to be removed before the end of the instant,
 ;; but must be in place until cleanup. It is unsafe for the thread to be schedulable ever again.
 (define (unsafe-assume-thread-will-die! gct)
+  ;; alternitavely, could to (void) here
   (replace-child! (gct)
                   (current-rthread)
                   (make-rthread empty-calling-continuation

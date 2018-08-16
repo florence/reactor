@@ -81,6 +81,8 @@
       (lambda () e ...)
       reactive-tag))))
 
+
+;; ct? ct? continuation? (-> (values ct? any/c)) (-> ct? any/c void)
 (define (call-with-continunation-mark-interleaving-and-cleanup tree sat k f code)
   (with-continuation-mark current-rthread-key sat
     (values
