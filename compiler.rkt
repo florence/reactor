@@ -72,18 +72,16 @@
   (syntax-parser
     [(_ S:id)
      #'(define S (make-pure-signal 'S))]
-    [(_ S:id default:expr ...)
-     (quasisyntax/loc this-syntax
-       (define-signal S default ...
-         #:gather (raise-signal-error 'S #,(length (syntax-e #'(default ...))))))]
-    [(_ S:id (~seq-no-order (~seq default:expr ...) (~seq #:gather gather:expr)))
-     (syntax/loc this-syntax (define-signal S default ... #:gather gather #:contract any/c))]
     [(_ S:id (~seq-no-order (~seq default:expr ...)
-                            (~seq #:gather gather:expr)
-                            (~seq #:contract /c)))
-     (syntax/loc this-syntax
+                            (~optional (~seq #:gather gather:expr)
+                                       #:defaults ([gather #`(raise-signal-error 'S n)]))
+                            (~optional (~seq #:contract /c)
+                                       #:defaults ([/c #'any/c]))))
+     (quasisyntax/loc this-syntax
        (define/contract S /c
-         (make-value-signal 'S (list default ...) empty gather)))]))
+         (make-value-signal 'S (list default ...) empty
+                            (let ([n #,(length (syntax-e #'(default ...)))])
+                              gather))))]))
 
 (define-syntax signal*
   (syntax-parser
