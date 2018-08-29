@@ -17,18 +17,32 @@
 Reactor is a @hyperlink[synchronl]{synchronous reactive}
 language in the style of @hyperlink["http://rml.lri.fr/"]{
  ReactiveML}. A program is represented by a
-@racket[reactor?], which consists of @racket[process?]es.
-The run of one program is broken up into reactions, each of
-which can be though of as being instantaneous. Every
-expression in the program either takes zero time (e.g.
-completes in the current reaction) or pauses until the next
-reaction.
+@racket[reactor?].
+
+
+
+The run of one program is broken up into @deftech{reactions} (also called @deftech{instants}), each of
+which can be though of as being @deftech{instantaneous}---that is, absent side effects, no
+concurrent thread of execution runs before or after any other thread. They all occur at the same time, and
+so seem to take zero logical time. Thus, concurrent computations are deterministic.
+
+Every expression in the program either takes zero time (e.g.
+completes in the current reaction) or @deftech{pauses}, which "consumes" time, stopping the 
+computation there until the next @tech{reaction}.
+
+The code within a @racket[reactor?] can be a mix of both
+reactive code (like @racket[par&]) and non-reactive code
+(e.g. normal racket expressions). This non-reactive will
+never consume time and should always terminate.
+
+In general racket level side effects (mutation,
+non-termination, etc) may break the guarantee of determininistic concurrencuy.
 
 @section{Running Programs}
 
 @defproc[(prime [proc process?]) reactor?]{
                                            
- Create a new reactor, primed the one process.
+ Create a new @racket[reactor?], who's code is the body of @racket[proc].
  
 }
 
@@ -36,17 +50,21 @@ reaction.
                  [start-signals (or/c pure-signal? (list/c value-signal? (listof any/c)))] ...)
          any]{
 
- Run one reaction in the reactor. The reactions begins by
- emitting the given signals with the given values.
+ Run one @tech{reaction} in the @racket[r]. The reaction begins by
+ @racket[emit&]ting the given @tech{signals} with the given values.
 
 }
 
 @section{Creating Processes}
 
+A @deftech{process} simply encapsulates code that may be
+run in a @racket[reactor?]: That is to say it is the
+reactive analog of a function.
+
 @defform*[((define-process id body ...)
            (define-process (id args ...) body ...))]{
                                                       
- Define new process.
+ The first variant defines a new @tech{process}.
                                                       
  The second variant creates a new function, @racket[func]
  which takes @racket[args] and returns the process defined by
@@ -55,9 +73,7 @@ reaction.
  These processes are not related to Rackets
  @seclink["subprocess" #:doc '(lib "scribblings/reference/reference.scrbl")]{
   processes}. Processes are also not related to
- @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")].
- The value of @racket[current-thread] may change without
- warning within a given process.
+ @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")].åå
  
 }
 
@@ -67,7 +83,7 @@ reaction.
 
 @section{Defining Processes}
 
-A process may contain arbitrary racket code. In addition, it
+A @tech{process} may contain arbitrary racket code. In addition, it
 may use the use the following forms. By convention forms
 ending in a @racket[&] may only be used inside of a
 @racket[process] or @racket[define-process].
@@ -77,7 +93,7 @@ ending in a @racket[&] may only be used inside of a
 
 @defidform[pause&]{
 
- Block the current process until the next reaction. Evaluates
+ @tech{pause} the current process until the next reaction. Evaluates
  to @racket[(void)] in the next reaction.
 
  @valid
@@ -94,13 +110,12 @@ ending in a @racket[&] may only be used inside of a
 
 @defform[(par& e ...)]{
 
- Runs each @racket[e] as an independent process. This blocks
- the current process until each new process has finished.
- Evaluates to a list containing the result of each
- expression.
+ Runs each @racket[e] concurrently. This expression completes evaluation
+ when each new branch has finished.
+ Evaluates to void.
 
- At the end of a reaction if all but one process is left
- active in the @racket[par&] that process becomes in tail
+ At the end of a reaction if all but one branch has
+ completed that branch becomes in tail
  position with respect to the @racket[par&] form.
 
  @valid
@@ -122,7 +137,7 @@ ending in a @racket[&] may only be used inside of a
 @defform[(loop& body ...)]{
 
  Loop @racket[body]s forever. The body of the loop must be
- non-instantaneous: it must pause each instant the loop
+ non-@tech{instantaneous}: it must pause each @tech{instant} the loop
  (re)starts.
 
  @valid
@@ -144,7 +159,7 @@ ending in a @racket[&] may only be used inside of a
 
 @defidform[halt&]{
 
- Suspends the current process indefinitely.
+ @tech{pause} forever.
 
  @valid
 
@@ -162,7 +177,7 @@ ending in a @racket[&] may only be used inside of a
              (par& (begin (displayln 1) pause& (displayln 2))
                    (begin (displayln 3) halt& (displayln 4))))
            (define r2 (prime par-halt))
-           (code:line (react! r2) (code:comment "note: these may display in either order"))
+           (code:line (react! r2) (code:comment "note: these may display in either order, since printing is a side effect"))
            (react! r2)
            (react! r2)]
                   
@@ -171,9 +186,8 @@ ending in a @racket[&] may only be used inside of a
 
 @defform[(run& proc)]{
                       
- Start the given process within the current one, blocking
- the process until it completes. Evaluates to the result
- of the process.
+ Start the given @tech{process} within a reaction. That is,
+ @racket[run&] is the reactive analog of function application.
 
  @valid
 
@@ -186,8 +200,6 @@ ending in a @racket[&] may only be used inside of a
            (react! r)
            (react! r)
            (react! r)]
-                   
-
 }
 
 @subsection{Signals}
@@ -196,14 +208,23 @@ ending in a @racket[&] may only be used inside of a
 within a Reactor, and between a reactor and its environment.
 It is never safe to share a signal between two reactors.
 
+Signals may be either @deftech{present} or @deftech{absent}
+within a given instant---@tech{present} if the have been
+@racket[emit&]ted during thie current reactor, and @tech{
+ absent} if it is the end of a reaction and it has never been
+@racket[emit&]ted. This means that forms like
+@racket[present&] and @racket[await&] which look at the
+@deftech{presence} of a signal must delay their choice to
+the end of a reaction if the signal is to be @tech{absent}.
+
 @defform*[((define-signal S)
            (define-signal S default ...+)
            (define-signal S default ...+ #:gather gather)
            (define-signal S default ...+ #:gather gather #:contract contract))]{
 
- Defines a new signal. The first variant defines a pure
- signal, with no value. The second and third variants define
- a value-carrying signal, which may carry multiple values.
+ Defines a new signal. The first variant defines a @deftech{pure
+ signal}, with no value. The second and third variants define
+ a @deftech{value carrying signal}, which may carry multiple values.
  The default values on the signal will be @racket[default].
  Multiple emissions of the signal will be combined with
  @racket[gather] which should be a associative procedure of
@@ -213,7 +234,7 @@ It is never safe to share a signal between two reactors.
  the values of another, in order. If no gather function is
  provided an error is raised if the signal is emitted twice
  in the same instant. The value emitted on a signal can only
- be observe in the next instant.
+ be observed in the next instant.
 
  When @racket[contract] is supplied the signal is protected by a that contract.
 
@@ -227,14 +248,14 @@ It is never safe to share a signal between two reactors.
            (signal (S ...) e)
            (signal ([S default #:gather gather] ...) e))]{
 
- Analogous to @racket[let], but for signals.
+ Analogous to @racket[let], but for @tech{signals}.
               
 }
 
 @defproc*[([(emit& [S pure-signal?]) void?]
            [(emit& [S value-signal?] [v any/c] ...) void?])]{
 
- Emits a signal in the current instant. If the signal
+ Emits a @tech{signal} in the current instant, making it @tech{present}. If the signal
  carries values, they must be given.
 
  @valid
@@ -244,7 +265,7 @@ It is never safe to share a signal between two reactors.
 @defform[(present& S then else)]{
 
  Evaluates to @racket[then] if @racket[S] is emitted in this
- instant. Evaluates to @racket[else] in the next instant
+ @tech{instant}. Evaluates to @racket[else] in the next @tech{instant}
  otherwise.
  
  @valid
@@ -257,17 +278,17 @@ It is never safe to share a signal between two reactors.
           #:grammar ([maybe-immediate (code:line) #:immediate]
                      [maybe-count (code:line) (code:line #:immediate n)])]{
 
- Awaits the emission of the signal @racket[S]. In the
- @racket[#:immediate] variant, the unblocks the same instant
- @racket[S] is emitted, and evaluates to @racket[(void)].
- Otherwise it terminates the following instant.
+ Awaits the emission of the @tech{signal} @racket[S]. In the
+ @racket[#:immediate] variant, it may respond to the @tech{presence} of @racket[S] in
+ the current @tech{instant}. Otherswise it always @tech{pauses} in the first
+ @tech{instant}. The first variant evaluates to @racket[(void)].
 
  If @racket[#:count] is provided @racket[await&] awaits that
- many signals. 
+ many emission of @racket[S] in as many @tech{instants}. 
                                              
- If pattern clauses are provided, @racket[S] must be a value carrying
- signal. In this case the value is matched against the given
- patterns in the reaction after @racket[S] is emitted. It evaluates to the
+ If pattern clauses are provided, @racket[S] must be a @tech{value carrying
+ signal}. In this case the value is matched against the given
+ patterns in the @tech{reaction} after @racket[S] is emitted. It evaluates to the
  @racket[body] of the first match. If none match the form
  continues to await the signal. The @racket[await&] form matches only signals that
  carry a single value. The @racket[await*&] form can match many valued signals.
@@ -279,13 +300,13 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(last [S value-signal?]) any]{
 
- Gets the values of @racket[S] in the previous instant.
+ Gets the values of @racket[S] in the previous @tech{instant}.
                                         
 }
 
 @defproc[(last? [S signal?]) boolean?]{
 
- Was this signal emitted in the previous instant?
+ Was this signal emitted in the previous @tech{instant}?
 
 }
 
@@ -330,7 +351,7 @@ It is never safe to share a signal between two reactors.
 @defform[(suspend& e ... #:unless S)]{
                                       
  Runs @racket[e] unless @racket[S] any instant
- where @racket[S] is emitted. Suspends the body and blocks
+ where @racket[S] is @racket[emit&]ted. Suspends the body, @tech{pause}ing the computation
  otherwise. Evaluates to its the result of body.
 
  @valid
@@ -354,7 +375,7 @@ It is never safe to share a signal between two reactors.
 
 @defform[(abort& e ... #:after S [pattern body ...] ...)]{
 
- Runs the body until @racket[S] is emitted. If no pattern clauses are provided, the body is
+ Runs the body until the @tech{signal} @racket[S] is @racket[emit&]ted. If no pattern clauses are provided, the body is
  aborted in the next instant, and the form evaluates to @racket[(void)].
 
  If patterns are provided, they are matched against the
@@ -402,19 +423,19 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(signal? [S any]) boolean?]{
 
- Is @racket[S] a signal?
+ Is @racket[S] a @tech{signal}?
 
 }
 
 @defproc[(pure-signal? [S any]) boolean?]{
 
- Is @racket[S] a signal which carries no value?
+ Is @racket[S] a @tech{pure signal} which carries no value?
 
 }
 
 @defproc[(value-signal? [S any]) boolean?]{
 
- Is @racket[S] a signal which carries a value?
+ Is @racket[S] a @tech{value carrying signal}?
 
 }
 
@@ -427,8 +448,8 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(signal=? [s1 signal?] [s2 signal?]) boolean?]{
 
- Are these the same signal? True if emitting either signal
- would cause the other signal to be present.
+ Are these the same signal? True if @racket[emit&]ting either signal
+ would cause the other signal to be @tech{present}.
 
 }
 
@@ -450,39 +471,94 @@ It is never safe to share a signal between two reactors.
 
 @defproc[(reactor-suspended? [r reactor?]) boolean?]{
 
- Is @racket[r] completely suspended. That is, there are no
- processes queued to immediately run on the next reaction, but
- there are some processes suspended on a signal
+ Is @racket[r] completely suspended. That is, the reaction
+ will immediatly @tech{pause} making no progress unless a
+ signal is provided which will cause a @racket[suspend&] to
+ execute its body.
 
 }
 
 @defproc[(reactor-done? [r reactor?]) boolean?]{
 
- Is @racket[r] done. That is, are there processes queued to
- immediately run on the next reaction and no suspensions
- waiting blocked on a signal?
+ Is @racket[r] done. That is the @tech{process} which which @racket[r]
+ was created has completed.
 
 }
 
 @defproc[(process? [p any]) boolean?]{
 
- Is @racket[p] a process?
+ Is @racket[p] a @tech{process}?
 
 }
 
 @defproc[(reactor-safe? [r reactor?]) boolean?]{
 
- Can `react!` be called directly on this reactor? It returns
+ Can @racket[react!] be called directly on this reactor? It returns
  false if control escapes a reaction via an abort, exception
  or other control jump, or if a reaction is already running
  in a different thread.
                                                
 }
 
-@defproc[(reactor-continuation-marks [r (and/c reactor? reactor-safe?)])
-         (listof continuation-mark-set?)]{
+@section{Continuation Marks}
 
- Gets the continuation marks for every running process in the reactor.
+Reactor provides the ability to get the current @tech[#:doc '(lib "scribblings/reference/reference.scrbl")]{continuation
+ marks} from a paused @racket[reactor?]. However continuation
+marks in reactor have fundamental difference from those in
+racket: They are a tree rather than a list. This is because
+@racket[par&] essentually forks the current continuation into
+several branches. Therefor Reactor mimics the racket continuation marks API,
+but extends it with trees.
+
+
+@defproc[(reactor-continuation-marks [r (and/c reactor? reactor-safe?)])
+         continuation-mark-set-tree?]{
+
+ Gets the continuation marks for @racket[r]. This is the
+ Reactor equivalent of @racket[continuation-marks].
+
+}
+
+@defproc[(continuation-mark-set-tree->tree [cmst continuation-mark-set-tree?] [key any/c])
+         tree?]{
+ Get a tree containing the marks for @racket[key]. The Reactor analog of @racket[continuation-mark-set->list].
+}
+
+
+@defproc[(continuation-mark-set-tree? [it any/c]) boolean?]{
+
+ Is @racket[it] an continuation mark set tree, the representation of a
+ the continuation marks from a reactor?
+
+}
+
+@deftogether[(@defproc[(tree? [it any/c]) boolean?]
+               @defstruct*[branch ([values list?] [children tree?])
+                           #:transparent
+                           #:omit-constructor]
+               @defstruct*[leaf ([values list?])
+                           #:transparent
+                           #:omit-constructor])]{
+
+ The representation of a tree of continuation marks from a
+ @racket[reactor?]. @racket[tree?] returns true for branches
+ and leafs. This representation of marks is "top down": that
+ is the first mark is the mark at the top of the continuation
+ tree. The is the opposet of racket's continuation mark
+ lists, where the first value is from the bottom of the stack.
+                                                           
+ A reactor without active @racket[par&]s will always be
+ represented by a leaf. A reactor with an @racket[par&] with
+ have a branch. The @racket[branch-values] will contain the
+ continuation mark values from above the @racket[par&].
+ @racket[branch-children] will contain a tree for each active
+ branch of the par.
+
+ Note that this mean there will always be more than one
+ child of a branch: If a @racket[par&] has a single branch at
+ the end of a reaction that branch will become in tail
+ position w.r.t the enclosing context of the @racket[par&],
+ removing the @racket[par&] itself.
 
 }
 
