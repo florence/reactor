@@ -590,11 +590,12 @@ Catching an exception using @racket[with-handlers]
 or @racket[call-with-exception-handler], capturing and 
 and applying a continuation inside of a reaction, or
 aborting to a prompt inside of a reaction is unsafe if
-any of these cross a continuation containing any reactive form. For
+any of these cross a continuation containing any reactive form and do not
+jump completely outside of the reaction. For
 example, if an exception passed through a @racket[par&],
-@racket[suspend&], or @racket[abort&] for the reactors
+@racket[suspend&], or @racket[abort&] the reactors
 control structure may become corrupted, and the reaction
-behavior and the state of its signals is unspecified.
+behavior and the state of its signals is undefined.
 Control may safely leave the reactor in this way, but the
 reactor is marked as unsafe.
 
