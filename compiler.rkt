@@ -16,7 +16,8 @@
  abort&
  present&
  with-handlers&
- current-control-tree)
+ current-control-tree
+ define-component)
 (require reactor/data reactor/runtime reactor/ct reactor/control)
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax seq-no-order
                      racket/sequence)
@@ -72,7 +73,7 @@
   (syntax-parser
     [(_ S:id)
      #'(define S (make-pure-signal 'S))]
-    [(_ S:id (~seq-no-order (~seq default:expr ...)
+    [(_ S:id (~seq-no-order (~seq default:expr ...+)
                             (~optional (~seq #:gather gather:expr)
                                        #:defaults ([gather #`(raise-signal-error 'S n)]))
                             (~optional (~seq #:contract /c)
@@ -290,3 +291,23 @@
   (await& #:immediate S)
   pause&
   (f (value-signal-value S)))
+
+
+(define-syntax define-component
+  (syntax-parser
+    [(_ n:id
+        (~seq-no-order
+         (~seq #:consts ([kc:keyword namec:id /cc:expr] ...))
+         (~seq #:signals ([k:keyword name:id /c:expr ...] ...)))
+        body:expr ...)
+     #'(define/contract (n (~@ kc namec) ... (~@ k name) ...)
+         (parse-component-contract #:consts ([kc namec /cc] ...) #:signals ([k name /c ...] ...))
+         (process
+          body ...))]))
+
+(define-syntax parse-component-contract
+  (syntax-parser
+    [(_ #:consts ([kc:keyword namec:id /cc:expr] ...) #:signals ([k:keyword name:id /c:expr ...] ...))
+     #'(-> (~@ kc /cc) ... (~@ k (signal/c /c ...)) ... process?)]))
+     
+     

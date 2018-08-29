@@ -44,7 +44,8 @@
  abort&
  loop&
  halt&
- with-handlers&)
+ with-handlers&
+ define-component)
 (require "data.rkt" "runtime.rkt" "compiler.rkt" "ct.rkt")
 
 

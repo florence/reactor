@@ -197,9 +197,9 @@ within a Reactor, and between a reactor and its environment.
 It is never safe to share a signal between two reactors.
 
 @defform*[((define-signal S)
-           (define-signal S default ...)
-           (define-signal S default ... #:gather gather)
-           (define-signal S default ... #:gather gather #:contract contract))]{
+           (define-signal S default ...+)
+           (define-signal S default ...+ #:gather gather)
+           (define-signal S default ...+ #:gather gather #:contract contract))]{
 
  Defines a new signal. The first variant defines a pure
  signal, with no value. The second and third variants define
@@ -420,7 +420,8 @@ It is never safe to share a signal between two reactors.
 
 @defform[(signal/c c ...)]{
 
- Creates a contract for value signals that contain @racket[c].
+ Creates a contract for value signals that contain
+ @racket[c]. The no argument case is equivalent to @racket[pure-signal?].
 
 }
 
