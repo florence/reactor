@@ -500,6 +500,8 @@ the end of a reaction if the signal is to be @tech{absent}.
  false if control escapes a reaction via an abort, exception
  or other control jump, or if a reaction is already running
  in a different thread.
+
+ This check is not thread safe. 
                                                
 }
 
@@ -547,8 +549,8 @@ but extends it with trees.
  @racket[reactor?]. @racket[tree?] returns true for branches
  and leafs. This representation of marks is "top down": that
  is the first mark is the mark at the top of the continuation
- tree. The is the opposet of racket's continuation mark
- lists, where the first value is from the bottom of the stack.
+ tree, and therefor the oldest mark. The is the opposet of racket's continuation mark
+ lists, where the first value is the most recent mark.
                                                            
  A reactor without active @racket[par&]s will always be
  represented by a leaf. A reactor with an @racket[par&] with
