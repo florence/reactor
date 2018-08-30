@@ -223,8 +223,8 @@ the end of a reaction if the signal is to be @tech{absent}.
            (define-signal S default ...+ #:gather gather #:contract contract))]{
 
  Defines a new signal. The first variant defines a @deftech{pure
- signal}, with no value. The second and third variants define
- a @deftech{value carrying signal}, which may carry multiple values.
+ signal}, with no value. They can only be @tech{present} or @tech{absent} The second and third variants define
+ a @deftech{value carrying signal}, which may be @racket[emit&]ed along side values.
  The default values on the signal will be @racket[default].
  Multiple emissions of the signal will be combined with
  @racket[gather] which should be a associative procedure of
@@ -234,9 +234,12 @@ the end of a reaction if the signal is to be @tech{absent}.
  the values of another, in order. If no gather function is
  provided an error is raised if the signal is emitted twice
  in the same instant. The value emitted on a signal can only
- be observed in the next instant.
+ be observed in the next instant. The value of a signal can be
+ extracted via @racket[last], and forms like @racket[await&]
+ which dispatch on the carried value.
 
- When @racket[contract] is supplied the signal is protected by a that contract.
+ When @racket[contract] is supplied the signal is protected by that contract.
+ See also @racket[signal/c].
 
  The defaut values, gather function, and contract may be supplied in any order.
 
@@ -264,7 +267,7 @@ the end of a reaction if the signal is to be @tech{absent}.
 
 @defform[(present& S then else)]{
 
- Evaluates to @racket[then] if @racket[S] is emitted in this
+ Evaluates to @racket[then] if @racket[S] is @racket[emit&]ted in this
  @tech{instant}. Evaluates to @racket[else] in the next @tech{instant}
  otherwise.
  
@@ -272,11 +275,11 @@ the end of a reaction if the signal is to be @tech{absent}.
  
 }
 
-@defform*[((await& maybe-immediate maybe-count S)
-           (await& S [pattern body ...] ...+)
-           (await*& S [(pattern ...) body ...] ...+))
-          #:grammar ([maybe-immediate (code:line) #:immediate]
-                     [maybe-count (code:line) (code:line #:immediate n)])]{
+@deftogether[(@defform*[((await& maybe-immediate maybe-count S)
+                         (await& S [pattern body ...] ...+))
+                        #:grammar ([maybe-immediate (code:line) #:immediate]
+                                   [maybe-count (code:line) (code:line #:immediate n)])]
+               @defform[(await*& S [(pattern ...) body ...] ...+)])]{
 
  Awaits the emission of the @tech{signal} @racket[S]. In the
  @racket[#:immediate] variant, it may respond to the @tech{presence} of @racket[S] in
@@ -284,7 +287,7 @@ the end of a reaction if the signal is to be @tech{absent}.
  @tech{instant}. The first variant evaluates to @racket[(void)].
 
  If @racket[#:count] is provided @racket[await&] awaits that
- many emission of @racket[S] in as many @tech{instants}. 
+ many emissions of @racket[S] in as many @tech{instants}. 
                                              
  If pattern clauses are provided, @racket[S] must be a @tech{value carrying
  signal}. In this case the value is matched against the given
