@@ -477,7 +477,7 @@ the end of a reaction if the signal is to be @tech{absent}.
  Is @racket[r] completely suspended. That is, the reaction
  will immediatly @tech{pause} making no progress unless a
  signal is provided which will cause a @racket[suspend&] to
- execute its body.
+ execute its body, or a @racket[await&] to make progress, etc.
 
 }
 
