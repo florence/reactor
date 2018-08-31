@@ -106,17 +106,20 @@
 
 (define-syntax/in-process suspend&
   (syntax-parser
-    [(suspend& e:expr ... #:unless S)
+    #:literals (or)
+    [(suspend& e:expr ... #:unless (or S ...+))
      #`(%%
         k
-        (let ([nt (make-suspend-unless k #f S)])
+        (let ([nt (make-suspend-unless k #f (flatten (list S ...)))])
           (with-extended-control
            tk
            nt
            (let ([t (continue-at (lambda () e ...) tk)])
              (set-suspend-unless-child! nt t)
              (reparent! t nt)
-             (activate-suspends! nt)))))]))
+             (activate-suspends! nt)))))]
+    [(suspend& e:expr ... #:unless S:expr)
+     #'(suspend& e ... #:unless (or S))]))
 
 (define-syntax/in-process abort&
   (syntax-parser
@@ -189,13 +192,18 @@
 
 (define-syntax/in-process await&
   (syntax-parser
-    [(await& #:immediate S:id)
-     #'(run& (await-immediate S))]
-    [(await& S)
-     #'(run& (await S))]
-    [(await& #:immediate #:count n S)
+    #:literals (or)
+    [(await& #:immediate (or S:expr ...+))
+     #'(run& (await-immediate (list S ...)))]
+    [(await& #:immediate S:expr)
+     #'(await& #:immediate (or S))]
+    [(await& (or S:expr ...+))
+     #'(run& (await (list S ...)))]
+    [(await& S:expr)
+     #'(await& (or S))]
+    [(await& #:immediate #:count n S ...+)
      #'(let ([k n]
-             [s S])
+             [s (list S ...)])
          (unless (exact-positive-integer? n)
            (error 'await& "expected exact postive integer, got ~v" n))
          (let loop ([c k])
@@ -206,9 +214,9 @@
               (await& #:immediate s)
               pause&
               (loop (sub1 c))])))]
-    [(await& #:count n S)
+    [(await& #:count n S ...+)
      #'(let ([k n]
-             [s S])
+             [s (list S ...)])
          (unless (exact-positive-integer? n)
            (error 'await& "expected exact postive integer, got ~v" n))
          (let loop ([c k])

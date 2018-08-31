@@ -13,6 +13,7 @@
    (define r (prime I/O))
    (react! r)
    (check-false (last? O)))
+  
   (test-begin
    (define-signal S)
    (define-signal O)
@@ -245,4 +246,23 @@
    (react! r)
    (check-false (last? O))
    (react! r A B)
-   (check-true (last? O))))
+   (check-true (last? O)))
+  ;; OR
+(test-begin
+   (define-signal S1)
+   (define-signal S2)
+   (define-signal O 1)
+   (define-process I/O
+     (suspend&
+      (loop& (emit& O 1) pause&)
+      #:unless (or S1 S2)))
+   (define r (prime I/O))
+   (react! r)
+   (check-false (last? O))
+   (react! r S1)
+   (check-true (last? O))
+   (react! r S2)
+   (check-true (last? O))
+   (check-not-exn (lambda () (react! r S1 S2)))
+   (check-true (last? O)))
+  )

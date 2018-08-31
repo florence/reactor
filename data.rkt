@@ -10,7 +10,7 @@
   (set-reactor-safe?! r #t))
 
 ;; A Reactor is a
-;;  (reactor (Listof Thread) (hasheqof SignalName Blocked) ControlTree (hasheqof SignalName SuspendUnless) (Listof Signal) boolean)
+;;  (reactor (Listof Thread) (hasheqof SignalName Blocked) ControlTree (hasheqof SignalName (Cons SuspendUnless (Listof Signal)) (Listof Signal) boolean)
 (struct reactor (active blocked ct susps signals safe?)
   #:mutable
   #:transparent)
@@ -18,7 +18,8 @@
 ;; `active` are a list of runnable threads
 ;; `blocked` maps signals to blocked thread pairs
 ;; `ct` the control three for the entire program
-;; `susps` is active suspensions, keys on their blocking signal
+;; `susps` is active suspensions, keys on their blocking signal. The signals
+;; within the list are all signals that suspend will trigger on.
 ;; `signals` is a list of all signals in the program, that have been emitted
 ;;   they may be reset inbetween instants
 ;; `safe?` is if the reactor is safe to react with

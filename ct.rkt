@@ -29,8 +29,8 @@
   (find-execution-path ct thread)
   ;; This (listof ControlTree) -> (-> Any)
   (build-execution-context ct next)
-  ;; This (RThread -> Void) (Signal ControlTree -> Void)
-  (register-context-as-active! ct activate! activate-on-signal!)
+  ;; This (RThread -> Void) ((Listof Signal) ControlTree -> Void)
+  (register-context-as-active! ct activate! activate-on-signals!)
   ;; This ControlTree ControlTree -> Void
   (replace-child! ct old new)
   ;; This -> Void
@@ -405,7 +405,7 @@
 ;                                                                 
 
 
-(struct suspend-unless control-tree (child signal)
+(struct suspend-unless control-tree (child signals)
   #:mutable
   #:constructor-name make-suspend-unless
   #:authentic
@@ -423,10 +423,10 @@
    (define (find-execution-path self thread)
      (define next (fep (suspend-unless-child self) thread))
      (and next (cons self next)))
-   (define (register-context-as-active! self activate! activate-on-signal!)
-     (if (signal-status (suspend-unless-signal self))
-         (rcaa! (suspend-unless-child self) activate! activate-on-signal!)
-         (activate-on-signal! self)))
+   (define (register-context-as-active! self activate! activate-on-signals!)
+     (if (ormap signal-status (suspend-unless-signals self))
+         (rcaa! (suspend-unless-child self) activate! activate-on-signals!)
+         (activate-on-signals! self)))
    (define (replace-child! self old new)
      (unless (eq? (suspend-unless-child self) old)
        (error 'internal "Thread leaked to incorrect context!"))

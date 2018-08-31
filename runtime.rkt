@@ -323,9 +323,19 @@
 (define (unblock-suspends! S)
   (define susps (reactor-susps (current-reactor)))
   (define trees (hash-ref susps S empty))
-  (hash-remove! susps S)
-  (for ([sp (in-list trees)])
+  (for ([sp+S (in-list trees)])
+    (define sp (first sp+S))
+    (prune-suspends! susps sp (rest sp+S))
     (activate-suspends! sp)))
+
+;; (hasheq-of Signal (cons SuspendUnless (Listof Signals)) SuspendUnless (Listof Signal) -> Void
+;; remove any entries of sp marked to awaken on Ss
+(define (prune-suspends! susps sp Ss)
+  (for ([S (in-list Ss)])
+    (hash-set! susps
+               S
+               (remf* (lambda (x) (eq? (first x) sp))
+                      (hash-ref susps S)))))
 
 ;; ControlTree -> Void
 ;; awaken or activate all suspends in this tree
@@ -336,17 +346,19 @@
    (lambda (susp) (add-suspend! (reactor-susps (current-reactor)) susp))))
   
 
-;; (hasheq-of Signal SuspendUnless) (Listof SuspendUnless) -> Void
+;; (hasheq-of Signal (cons SuspendUnless (Listof Signals)) (Listof SuspendUnless) -> Void
 ;; Effect: begin waiting on (activate) these suspends, given the suspension map
 ;; Invariant: Must be called during an instant, before signal cleanup.
 (define (add-suspends! susps new-sp)
   (for ([sp (in-list new-sp)])
     (add-suspend! susps sp)))
 (define (add-suspend! susps sp)
-  (define S (signal-name (suspend-unless-signal sp)))
-  (hash-set! susps
-             S
-             (cons sp (hash-ref susps S empty))))
+  (define Ss (map signal-name (suspend-unless-signals sp)))
+  (define susper (cons sp Ss))
+  (for ([S (in-list Ss)])
+    (hash-set! susps
+               S
+               (cons susper (hash-ref susps S empty)))))
 
 ;; ControlTree -> Any
 ;; suspend the current thread until the next instant

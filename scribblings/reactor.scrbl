@@ -226,11 +226,11 @@ the end of a reaction if the signal is to be @tech{absent}.
  signal}, with no value. They can only be @tech{present} or @tech{absent} The second and third variants define
  a @deftech{value carrying signal}, which may be @racket[emit&]ed along side values.
  The default values on the signal will be @racket[default].
- Multiple emissions of the signal will be combined with
+ Multiple @tech[#:key "presence"]{emissions} of the signal will be combined with
  @racket[gather] which should be a associative procedure of
  twice as many arguments as the signal has values, and should
  return as many values. When the gather function is applied
- all of the values of one emission with be supplied before
+ all of the values of one @tech[#:key "presence"]{emissions} with be supplied before
  the values of another, in order. If no gather function is
  provided an error is raised if the signal is emitted twice
  in the same instant. The value emitted on a signal can only
@@ -275,19 +275,31 @@ the end of a reaction if the signal is to be @tech{absent}.
  
 }
 
-@deftogether[(@defform*[((await& maybe-immediate maybe-count S)
+@deftogether[(@defform*[#:literals (or)
+                        ((await& maybe-immediate maybe-count signal-expr)
                          (await& S [pattern body ...] ...+))
-                        #:grammar ([maybe-immediate (code:line) #:immediate]
-                                   [maybe-count (code:line) (code:line #:immediate n)])]
-               @defform[(await*& S [(pattern ...) body ...] ...+)])]{
+                        #:grammar ([signal-expr signal-or-list
+                                    (or signal-or-list ...+)]
+                                   [maybe-immediate (code:line) #:immediate]
+                                   [maybe-count (code:line) (code:line #:immediate n)])
+                        #:contracts
+                        [(S signal?)
+                         (signal-or-list (or/c signal? (listof signal?)))]]
+               @defform[(await*& S [(pattern ...) body ...] ...+)
+                        #:contracts
+                        [(S signal?)]])]{
 
- Awaits the emission of the @tech{signal} @racket[S]. In the
+ Awaits the @tech[#:key "presence"]{emissions} of the @tech{signal} @racket[S]. In the
  @racket[#:immediate] variant, it may respond to the @tech{presence} of @racket[S] in
  the current @tech{instant}. Otherswise it always @tech{pauses} in the first
  @tech{instant}. The first variant evaluates to @racket[(void)].
 
  If @racket[#:count] is provided @racket[await&] awaits that
- many emissions of @racket[S] in as many @tech{instants}. 
+ many @tech[#:key "presence"]{emissions} of @racket[S] in as many @tech{instants}.
+
+ If @racket[signal-expr] is an @racket[or] clause or a list of signals the await is triggered
+ if any of the signals is @tech{present}. However if  @racket[#:count] is
+ provided, multiple of these signals being @racket[emit&]ed counts as only one emission.
                                              
  If pattern clauses are provided, @racket[S] must be a @tech{value carrying
  signal}. In this case the value is matched against the given
@@ -351,11 +363,20 @@ the end of a reaction if the signal is to be @tech{absent}.
 
 @subsection{Control}
 
-@defform[(suspend& e ... #:unless S)]{
+@defform[#:literals(or)
+         (suspend& e ... #:unless signal-expr)
+         #:grammar
+         [(signal-expr signal-or-list
+                       (or signal-or-list ...+))]
+         #:contracts
+          [(signal-or-list (or/c signal? (listof signal?)))]]{
                                       
  Runs @racket[e] unless @racket[S] any instant
- where @racket[S] is @racket[emit&]ted. Suspends the body, @tech{pause}ing the computation
+ where @racket[signal-expr] is @racket[emit&]ted. Suspends the body, @tech{pause}ing the computation
  otherwise. Evaluates to its the result of body.
+
+ If @racket[signal-expr] is either an @racket[or] clause or a list of signals then the
+ suspend executes when any of the given signals are @tech{present}.
 
  @valid
 
