@@ -597,10 +597,10 @@ change without warning.
 
 @subsection{Signals and Synchronization}
 
-Signals act as
+@tech{Signals} act as
 @tech["synchronizable event" #:doc '(lib "scribblings/reference/reference.scrbl")],
 which becomes ready for synchronization at the end of a
-reaction in which the signal was emitted. The
+@tech{reaction} in which the signal was @racket[emit&]ted. The
 @tech["synchronization result" #:doc '(lib "scribblings/reference/reference.scrbl")]
 is the signal itself.
 
