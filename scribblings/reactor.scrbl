@@ -70,10 +70,10 @@ reactive analog of a function.
  which takes @racket[args] and returns the process defined by
  @racket[body].
 
- These processes are not related to Rackets
+ These processes are not related to Racket's
  @seclink["subprocess" #:doc '(lib "scribblings/reference/reference.scrbl")]{
-  processes}. Processes are also not related to
- @tech["thread" #:doc '(lib "scribblings/reference/reference.scrbl")].åå
+  processes}. Processes are also not related to Racket's
+ @tech["threads" #:doc '(lib "scribblings/reference/reference.scrbl")].
  
 }
 
