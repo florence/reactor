@@ -45,22 +45,19 @@
 ;; Reactor (Listof (or PureSignal (List ValueSignal (list Any ...)))) -> Any
 ;; run a reaction on this reactor
 (define (react! grp . signals)
-  (reactor-unsafe! grp)
-  (define (start)
-    (parameterize ([the-current-reactor grp])
-      (for ([i (in-list signals)])
-        (match i
-          [(list a b) (apply emit-value a b)]
-          [a (emit-pure a)])))
-    (sched! grp))
-
-
-  
   (with-handlers ([void
                    ;; prevent `call-with-exception-handler` from running within
                    ;; the reaction itself. Necessary to prevent state leaking between
                    ;; reactors. 
                    raise])
+    (reactor-unsafe! grp)
+    (define (start)
+      (parameterize ([the-current-reactor grp])
+        (for ([i (in-list signals)])
+          (match i
+            [(list a b) (apply emit-value a b)]
+            [a (emit-pure a)])))
+      (sched! grp))
     (call-with-continuation-barrier
      (lambda ()
        (call/prompt start reactive-tag)
