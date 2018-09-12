@@ -12,8 +12,7 @@
 ;; A Reactor is a
 ;;  (reactor (Listof Thread) (hasheqof SignalName Blocked) ControlTree (hasheqof SignalName (Cons SuspendUnless (Listof Signal)) (Listof Signal) boolean)
 (struct reactor (active blocked ct susps signals safe?)
-  #:mutable
-  #:transparent)
+  #:mutable)
 ;; `os` is the continuation for the OS loop
 ;; `active` are a list of runnable threads
 ;; `blocked` maps signals to blocked thread pairs
