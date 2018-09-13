@@ -1,6 +1,8 @@
 #lang racket
 (provide (all-defined-out))
-(require syntax/parse/define)
+(require syntax/parse/define racket/contract/base
+         racket/stxparam
+         racket/stxparam-exptime)
 
 ;; ExternalReactor -> Void
 (define (reactor-unsafe! r)
@@ -86,12 +88,113 @@
                 (make-signal-evt)
                 default default collection gather))
 
-
-(define-syntax signal/c
-  (syntax-parser
-    [(_) #'pure-signal?]
-    [(_ /c:expr ...)
-     #:with (x ...) (generate-temporaries #'(/c ...))
-     #'(let ([x /c] ...)
-         (struct/c value-signal any/c any/c any/c any/c (list/c x ...) (list/c x ...) any/c (-> x ... x ... x ...)))]))
-
+(define-syntax-parameter gather-contract #f)
+(define-syntax-parser  signal/c
+  [(signal/c contracts ...)
+   #:with (n ...) (generate-temporaries #'(contracts ...))
+   #`(let ([n contracts] ...)
+       (signal/c/f #,(if (syntax-parameter-value #'gather-contract)
+                         #'(-> n ... n ... (values n ...))
+                         #'any/c)
+                   (list n ...)
+                   '(signal/c contracts ...)))])
+(define (signal/c/f arrow contracts name)
+  (cond
+    [(empty? contracts)
+     (flat-named-contract name pure-signal?)]
+    [else
+     (define cn (length contracts))
+     
+     (make-chaperone-contract
+      #:name name
+      #:first-order (lambda (val)
+                      (and (signal? val)
+                           (= (length contracts) (length (value-signal-default val)))
+                           (for/and ([c (in-list contracts)]
+                                     [v (in-list (value-signal-default val))])
+                             (contract-first-order-passes? c v))
+                           (contract-first-order-passes? arrow (value-signal-gather val))))
+      #:late-neg-projection
+      (lambda (blame)
+        (define arrow+blame
+          ((contract-late-neg-projection arrow)
+           (blame-add-context
+            blame
+            "The gather function of")))
+        (define emit-contracts+blame
+          (for/list ([x (in-list contracts)]
+                     [i (in-naturals 1)])
+            ((contract-late-neg-projection
+              x)
+             (blame-add-context
+              blame
+              (format "The ~a value emitted to" (n->th i))
+              #:swap? #t))))
+        (define read-contracts+blame
+          (for/list ([x (in-list contracts)]
+                     [i (in-naturals 1)])
+            ((contract-late-neg-projection
+              x)
+             (blame-add-context
+              blame
+              (format "The ~a value contained in" (n->th i))))))
+        (define default-contracts+blame
+          (for/list ([x (in-list contracts)]
+                     [i (in-naturals 1)])
+            ((contract-late-neg-projection
+              x)
+             (blame-add-context
+              blame
+              (format "The ~a default of argument of" (n->th i))))))
+        (lambda (val neg)
+          (unless (value-signal? val)
+            (raise-blame-error blame #:missing-party neg
+                               val
+                               (list 'expected "value-signal?" 'given "~v") val))
+          (unless (= cn (length (value-signal-default val)))
+            (raise-blame-error blame #:missing-party neg
+                               val
+                               (list 'expected "A signal carrying ~a values"
+                                     'given
+                                     "A signal named ~a, which carries ~a values with defaults: ~a")
+                               cn
+                               (signal-name val)
+                               (length (value-signal-default val))
+                               (map ~v (value-signal-default val))))
+                               
+          (define arrow+neg (arrow+blame (value-signal-gather val) neg))
+          (define new-defaults
+            (map
+             (lambda (v c)
+               (c v neg))
+             (value-signal-default val)
+             default-contracts+blame))
+          (chaperone-struct
+           val
+           value-signal-default
+           (lambda (self val) new-defaults)
+           value-signal-gather
+           (lambda (self val) arrow+neg)
+           set-value-signal-collection!
+           (lambda (self field)
+             (if (empty? field)
+                 empty
+                 (cons (map (lambda (c v) (c v neg))
+                            emit-contracts+blame
+                            (first field))
+                       (rest field))))
+           
+           value-signal-value
+           (lambda (self field)
+             (map (lambda (c v) (c v neg))
+                  read-contracts+blame
+                  field))))))]))
+           
+(define (n->th n)
+  (string-append 
+   (number->string n)
+   (case (modulo n 10)
+     [(1) "st"]
+     [(2) "nd"]
+     [(3) "rd"]
+     [else "th"])))         

@@ -465,8 +465,20 @@ the end of a reaction if the signal is to be @tech{absent}.
 
 @defform[(signal/c c ...)]{
 
- Creates a contract for value signals that contain
+ Creates a contract for value that contain
  @racket[c]. The no argument case is equivalent to @racket[pure-signal?].
+
+ If form appears syntactically within @racket[#:contract]
+ option of the @racket[define-signal] form the contract is
+ checked when: values are @racket[emit&]ted, values are read
+ from the signal (e.g. via @racket[last]), and when values
+ are combined via the gather function. If the gather function
+ violates its contract the positive party will be blamed.
+
+ If the contract is attached via another form the contract
+ barrier does not cover the gather function. Instead the
+ contract behaves like box or channel contracts, and is only
+ checked when the value is read from or written to.
 
 }
 

@@ -79,7 +79,7 @@
                             (~optional (~seq #:contract /c)
                                        #:defaults ([/c #'any/c]))))
      (quasisyntax/loc this-syntax
-       (define/contract S /c
+       (define/contract S (syntax-parameterize ([gather-contract #t]) /c)
          (make-value-signal 'S (list default ...) empty
                             (let ([n #,(length (syntax-e #'(default ...)))])
                               gather))))]))
