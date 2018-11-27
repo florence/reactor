@@ -48,4 +48,7 @@
  define-component)
 (require "data.rkt" "runtime.rkt" "compiler.rkt" "ct.rkt")
 
+(module reader syntax/module-reader
+  reactor/lang)
+
 
