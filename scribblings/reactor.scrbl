@@ -1,9 +1,10 @@
 #lang scribble/manual
-@(require (for-label (except-in racket process last)
+@(require (for-label (except-in racket last)
                      reactor)
           scribble/example)
 
 @(define evil (make-base-eval '(require reactor)))
+@(evil '(require racket/contract))
 
 
 
@@ -18,8 +19,6 @@ Reactor is a @hyperlink[synchronl]{synchronous reactive}
 language in the style of @hyperlink["http://rml.lri.fr/"]{
  ReactiveML}. A program is represented by a
 @racket[reactor?].
-
-
 
 The run of one program is broken up into @deftech{reactions} (also called @deftech{instants}), each of
 which can be though of as being @deftech{instantaneous}---that is, absent side effects, no
@@ -40,9 +39,12 @@ non-termination, etc) may break the guarantee of determininistic concurrencuy.
 
 @section{Running Programs}
 
-@defproc[(prime [proc process?]) reactor?]{
+@defproc[(prime [proc procedure?]
+                [args any/c ...]) reactor?]{
                                            
- Create a new @racket[reactor?], who's code is the body of @racket[proc].
+ Create a new @racket[reactor?], who's code is the body of @racket[proc]. Usually
+ @racket[proc] is a @tech{reactive function}, although this is not necessary.
+ The first reaction will invoke @racket[proc] with @racket[args].
  
 }
 
@@ -55,51 +57,24 @@ non-termination, etc) may break the guarantee of determininistic concurrencuy.
 
 }
 
-@section{Creating Processes}
+@section{Creating Reactive Functions}
 
-A @deftech{process} simply encapsulates code that may be
-run in a @racket[reactor?]: That is to say it is the
-reactive analog of a function.
+@deftech{Reactive functions} may contain arbitrary racket code. In addition, it
+may use the use the following forms. By convention forms and functions
+ending in a @racket[&] may only be used within the dynamic extent of a 
+@tech{reaction}.
 
-@defform*[((define-process id body ...)
-           (define-process (id args ...) body ...))]{
-                                                      
- The first variant defines a new @tech{process}.
-                                                      
- The second variant creates a new function, @racket[func]
- which takes @racket[args] and returns the process defined by
- @racket[body].
-
- These processes are not related to Racket's
- @seclink["subprocess" #:doc '(lib "scribblings/reference/reference.scrbl")]{
-  processes}. Processes are also not related to Racket's
- @tech["threads" #:doc '(lib "scribblings/reference/reference.scrbl")].
- 
-}
-
-@defform[(process body ...)]{
- Create a new process.
-}
-
-@section{Defining Processes}
-
-A @tech{process} may contain arbitrary racket code. In addition, it
-may use the use the following forms. By convention forms
-ending in a @racket[&] may only be used inside of a
-@racket[process] or @racket[define-process].
-
-@(define valid @list{Only valid inside
- of a @racket[process] or @racket[define-process].})
+@(define valid @list{Only valid within the dynamic extent of a @tech{reaction}.})
 
 @defidform[pause&]{
 
- @tech{pause} the current process until the next reaction. Evaluates
+ @tech{pause} the current @tech{reactive function} until the next reaction. Evaluates
  to @racket[(void)] in the next reaction.
 
  @valid
 
  @examples[#:eval evil
-           (define-process pause
+           (define (pause)
              pause&
              (displayln 1))
            (define r (prime pause))
@@ -121,10 +96,10 @@ ending in a @racket[&] may only be used inside of a
  @valid
 
  @examples[#:eval evil
-           (define-process par1
+           (define (par1)
              (displayln (par& 1 2)))
            (react! (prime par1))
-           (define-process par2
+           (define (par2)
              (displayln
               (par& 1
                     (begin pause& 2))))
@@ -143,7 +118,7 @@ ending in a @racket[&] may only be used inside of a
  @valid
 
  @examples[#:eval evil
-           (define-process loop
+           (define (loop)
              (let ([i 0])
                (loop& (displayln i)
                       (set! i (+ 1 i))
@@ -165,7 +140,7 @@ ending in a @racket[&] may only be used inside of a
 
 
  @examples[#:eval evil
-           (define-process halt
+           (define (halt)
              (displayln 1)
              halt&
              (displayln 2))
@@ -173,7 +148,7 @@ ending in a @racket[&] may only be used inside of a
            (react! r)
            (react! r)
            (react! r)
-           (define-process par-halt
+           (define (par-halt)
              (par& (begin (displayln 1) pause& (displayln 2))
                    (begin (displayln 3) halt& (displayln 4))))
            (define r2 (prime par-halt))
@@ -181,25 +156,6 @@ ending in a @racket[&] may only be used inside of a
            (react! r2)
            (react! r2)]
                   
-}
-
-
-@defform[(run& proc)]{
-                      
- Start the given @tech{process} within a reaction. That is,
- @racket[run&] is the reactive analog of function application.
-
- @valid
-
- @examples[#:eval evil
-           (define-process (my-loop i)
-             (displayln i)
-             pause&
-             (run& (my-loop (add1 i))))
-           (define r (prime (my-loop 0)))
-           (react! r)
-           (react! r)
-           (react! r)]
 }
 
 @subsection{Signals}
@@ -331,28 +287,27 @@ the end of a reaction if the signal is to be @tech{absent}.
                                         
 }
 
-
 @examples[#:eval evil
           (define-signal input)
-          (code:comment "pure-signal -> process")
-          (define-process (main input)
-            (define-signal crosstalk 0 #:gather +)
-            (par& (run& (counter input crosstalk))
-                  (run& (printloop crosstalk))))
-          (code:comment "pure-signal? value-signal? -> process")
-          (define-process (counter input chan)
+          (define/contract (counter input chan)
+            (reactive-> pure-signal? value-signal? none/c)
             (emit& chan 0)
             (loop&
              (await& #:immediate input)
              (emit& chan (add1 (last chan)))
              pause&))
-          (code:comment "value-signal? integer -> process")
-          (define-process (printloop chan)
+          (define/contract (printloop chan)
+            (reactive-> value-signal? none/c)
             (loop&
              (await& chan
                      [times
                       (printf "got total of ~a inputs\n" times)])))
-          (define r (prime (main input)))
+          (define/contract (main input)
+            (reactive-> pure-signal? none/c)
+            (define-signal crosstalk 0 #:gather +)
+            (par& (counter input crosstalk)
+                  (printloop crosstalk)))
+          (define r (prime main input))
           (react! r)
           (react! r)
           (react! r input)
@@ -381,12 +336,12 @@ the end of a reaction if the signal is to be @tech{absent}.
  @valid
 
  @examples[#:eval evil
-           (define-process (hi unlock)
+           (define (hi unlock)
              (suspend&
               (loop& (displayln 'hello) pause&)
               #:unless unlock))
            (define-signal print)
-           (define r (prime (hi print)))
+           (define r (prime hi print))
            (react! r print)
            (react! r)
            (react! r)
@@ -413,12 +368,12 @@ the end of a reaction if the signal is to be @tech{absent}.
  @valid
 
  @examples[#:eval evil
-           (define-process (annoying silence)
+           (define (annoying silence)
              (abort&
               (loop& (displayln "I know a song that gets on everybody's nerves") pause&)
               #:after silence))
            (define-signal off)
-           (define r (prime (annoying off)))
+           (define r (prime annoying off))
            (react! r)
            (react! r)
            (react! r off)
@@ -516,15 +471,17 @@ the end of a reaction if the signal is to be @tech{absent}.
 
 @defproc[(reactor-done? [r reactor?]) boolean?]{
 
- Is @racket[r] done. That is the @tech{process} which which @racket[r]
- was created has completed.
+ Is @racket[r] done. That is the @tech{reactive function} which which @racket[r]
+ was created has returned.
 
 }
 
-@defproc[(process? [p any]) boolean?]{
-
- Is @racket[p] a @tech{process}?
-
+@defform[(reactive-> dom ... range)
+         #:contracts ([dom contract?]
+                      [range contract?])]{
+                        
+ like @racket[->], but also restricts the function to be
+ called only in the dynamic extent of a reaction.
 }
 
 @defproc[(reactor-safe? [r reactor?]) boolean?]{

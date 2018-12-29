@@ -6,7 +6,7 @@
    (define-signal O #f #:gather values)
    (define r
      (prime
-      (process
+      (thunk
        (with-handlers& 
         (error "hi")
         #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
@@ -20,7 +20,7 @@
    (define-signal O #f #:gather values)
    (define r
      (prime
-      (process
+      (thunk
        (emit&
         O
         (with-handlers& 
@@ -35,7 +35,7 @@
    (define-signal O #f #:gather values)
    (define r
      (prime
-      (process
+      (thunk
        (emit&
         O
         (with-handlers& 
@@ -51,7 +51,7 @@
    (define-signal O #f #:gather values)
    (define r
      (prime
-      (process
+      (thunk
        (with-handlers& 
         pause& (error "hi")
         #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
@@ -67,7 +67,7 @@
    (define-signal O #f #:gather values)
    (define r
      (prime
-      (process
+      (thunk
        (with-handlers& 
         (par& (emit& O "hi") (error "bye"))
         #:after-error [void (lambda (e) (emit& O (exn-message e)))]))))
@@ -85,7 +85,7 @@
    (define-signal run)
    (define r
      (prime
-      (process
+      (thunk
        (with-handlers& 
         (suspend&
          (par& (emit& O "hi") (error "bye"))
@@ -105,7 +105,7 @@
    (define-signal run)
    (define r
      (prime
-      (process
+      (thunk
        (suspend&
         (with-handlers& 
          (par& (emit& O "hi") (error "bye"))
@@ -131,7 +131,7 @@
    (define-signal inputs-changed)
    (define-signal inputs-changed-to "")
    (define-signal error)
-   (define-process input-handling
+   (define (input-handling)
      (par&
       (loop& (await& #:immediate inputs-changed) (emit& disable-run) pause&)
       (loop&
@@ -161,7 +161,7 @@
    (define-signal O "")
    (define r
      (prime
-      (process
+      (thunk
        (par&
         (await& S
           [v
@@ -182,7 +182,7 @@
    (define-signal O (seteq) #:gather set-union)
    (define r
      (prime
-      (process
+      (thunk
        (with-handlers&
         (par& (raise "a") (raise "b"))
         #:after-error [(lambda (_) #t) (lambda (e) (emit& O (set e)))]))))

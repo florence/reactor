@@ -1,8 +1,5 @@
 #lang racket
 (provide
- run&
- process*
- define-process
  signal*
  define-signal
  par&
@@ -16,8 +13,7 @@
  abort&
  present&
  with-handlers&
- current-control-tree
- define-component)
+ current-control-tree)
 (require reactor/data reactor/runtime reactor/ct reactor/control)
 (require (for-syntax syntax/parse racket/stxparam-exptime racket/syntax seq-no-order
                      racket/sequence)
@@ -25,41 +21,14 @@
          racket/hash racket/stxparam)
                                                            
 
-(define-syntax-parameter in-process? #f)
 (define (current-control-tree)
   (unless (current-reactor) (raise-process-escape-error))
   (control-tree-parent (current-rthread)))
 
-(define-syntax define-syntax/in-process
-  (syntax-parser
-    [(_ name:id f)
-     #'(define-syntax name
-         (lambda (stx)
-           (unless (syntax-parameter-value #'in-process?)
-             (raise-syntax-error 'name "used outside of process" stx))
-           (f stx)))]))
+(define (check-in-reactor!)
+  (void (current-reactor)))
 
-(define-syntax/in-process run&
-  (syntax-parser
-    [(_ e:expr)
-     #`(runf e (current-control-tree))]))
-(define-syntax process*
-  (syntax-parser
-    [(_ e ...)
-     #'(make-process
-        (lambda (tree)
-          (lambda ()
-            (syntax-parameterize ([in-process? #t])
-              e ...))))]))
-(define-syntax define-process
-  (syntax-parser
-    [(_ name:id body ...)
-     #'(define name (process* body ...))]
-    [(_ (name:id args:id ...) body:expr ...)
-     #'(define (name args ...)
-         (process* body ...))]))
-
-(define-syntax/in-process present&
+(define-syntax present&
   (syntax-parser
     [(present& S p q)
      #'(presentf (current-control-tree) S (lambda () p) (lambda () q))]))
@@ -96,15 +65,15 @@
          (define-signal S default ... #:gather gather) ...
          e ...)]))
 
-(define-syntax/in-process pause&
+(define-syntax pause&
   (syntax-parser
     [_:id #'(pausef (current-control-tree))]))
 
-(define-syntax/in-process emit&
+(define-syntax emit&
   (syntax-parser
     [(_ . a) #'(emitf . a)]))
 
-(define-syntax/in-process suspend&
+(define-syntax suspend&
   (syntax-parser
     #:literals (or)
     [(suspend& e:expr ... #:unless (or S ...+))
@@ -121,7 +90,7 @@
     [(suspend& e:expr ... #:unless S:expr)
      #'(suspend& e ... #:unless (or S))]))
 
-(define-syntax/in-process abort&
+(define-syntax abort&
   (syntax-parser
     [(abort& e:expr ... #:after S)
      #'(%%
@@ -158,7 +127,7 @@
              (reparent! t nt)
              (activate! t)))))]))
 
-(define-syntax/in-process par&
+(define-syntax par&
   (syntax-parser
     [(par&) #'(void)]
     [(par& p ...)
@@ -190,15 +159,15 @@
   (replace-child! (current-control-tree) (current-rthread) new-tree)
   (call/prompt body reactive-tag))
 
-(define-syntax/in-process await&
+(define-syntax await&
   (syntax-parser
     #:literals (or)
     [(await& #:immediate (or S:expr ...+))
-     #'(run& (await-immediate (list S ...)))]
+     #'(await-immediate (list S ...))]
     [(await& #:immediate S:expr)
      #'(await& #:immediate (or S))]
     [(await& (or S:expr ...+))
-     #'(run& (await (list S ...)))]
+     #'(await (list S ...))]
     [(await& S:expr)
      #'(await& (or S))]
     [(await& #:immediate #:count n S ...+)
@@ -226,7 +195,7 @@
     [(await& S [pat:expr body:expr ...] ...)
      #'(await*& S [(pat) body ...] ...)]))
 
-(define-syntax/in-process await*&
+(define-syntax await*&
   (syntax-parser
     [(_ S [(pat:expr ...) body:expr ...] ...)
      #:with under (for/list ([_ (in-syntax (car (syntax-e #'((pat ...) ...))))]) #'_)
@@ -234,11 +203,11 @@
          (define f
            (lambda (v)
              (match/values (apply values v)
-               [(pat ...) body ...] ...
-               [under (run& (await-value S f))])))
-         (run& (await-value S f)))]))
+                           [(pat ...) body ...] ...
+                           [under (await-value S f)])))
+         (await-value S f))]))
 
-(define-syntax/in-process loop&
+(define-syntax loop&
   (syntax-parser
     [(loop& p ...)
      #`(let loop ()
@@ -252,11 +221,11 @@
                             (void)))))
          (loop))]))
 
-(define-syntax/in-process halt&
+(define-syntax halt&
   (syntax-parser
     [halt:id #'(signal* S (suspend& (void) #:unless S))]))
 
-(define-syntax/in-process with-handlers&
+(define-syntax with-handlers&
   (syntax-parser
     [(with-handlers& body:expr ... #:after-error [p:expr h:expr] ...)
      (define/with-syntax (v ...)
@@ -286,36 +255,19 @@
 
 ;; Signal -> Process
 ;; block until the signal is present (including in this instant)
-(define-process (await-immediate S)
+(define (await-immediate S)
   (suspend& (void) #:unless S))
 
-(define-process (await S)
-  (begin pause& (run& (await-immediate S))))
+(define (await S)
+  (begin pause& (await-immediate S)))
 
 ;; ValueSignal (Any -> Any) -> Process
 ;; Await a value for the signal S, and give it to `f`
 ;; when ready
-(define-process (await-value S f)
+(define (await-value S f)
   (await& #:immediate S)
   pause&
   (f (value-signal-value S)))
 
-
-(define-syntax define-component
-  (syntax-parser
-    [(_ n:id
-        (~seq-no-order
-         (~seq #:consts ([kc:keyword namec:id /cc:expr] ...))
-         (~seq #:signals ([k:keyword name:id /c:expr ...] ...)))
-        body:expr ...)
-     #'(define/contract (n (~@ kc namec) ... (~@ k name) ...)
-         (parse-component-contract #:consts ([kc namec /cc] ...) #:signals ([k name /c ...] ...))
-         (process
-          body ...))]))
-
-(define-syntax parse-component-contract
-  (syntax-parser
-    [(_ #:consts ([kc:keyword namec:id /cc:expr] ...) #:signals ([k:keyword name:id /c:expr ...] ...))
-     #'(-> (~@ kc /cc) ... (~@ k (signal/c /c ...)) ... process?)]))
      
      

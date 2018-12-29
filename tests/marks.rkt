@@ -6,7 +6,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (with-continuation-mark 1 2 pause&))))
    (react! r)
    (define l (reactor-continuation-marks r))
@@ -17,7 +17,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (with-continuation-mark 1 1
          (par&
           (with-continuation-mark 1 2 pause&)
@@ -29,7 +29,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (par& pause& pause&))))
    (react! r)
    (check-equal?
@@ -41,7 +41,7 @@
    (define-signal R)
    (define r
      (prime
-      (process
+      (thunk
        (abort&
         (par& 1 2)
         halt&
@@ -56,7 +56,7 @@
    (define-signal S1)
    (define r
      (prime
-      (process
+      (thunk
        (present& S
                  (void)
                  (with-continuation-mark 1 1 (await& S1))))))
@@ -69,7 +69,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (par& pause&
              (with-continuation-mark hidden-thread-key #t pause&)))))
    (react! r)
@@ -82,7 +82,7 @@
    ;; internal threads this test becomes meaningless
    (define r
      (prime
-      (process
+      (thunk
        (loop& pause&))))
    (react! r)
    (check-equal? (continuation-mark-set-tree->tree (reactor-continuation-marks r) 1)
@@ -91,7 +91,7 @@
    (define-signal S)
    (define r
      (prime
-      (process
+      (thunk
        (with-continuation-mark 1 1
          (suspend& (with-continuation-mark 1 2 halt&) #:unless S)))))
    (react! r S)
@@ -101,7 +101,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (with-continuation-mark 1 1
          (par& (with-continuation-mark 1 2 pause&)
                (with-continuation-mark 1 2 halt&))))))

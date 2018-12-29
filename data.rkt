@@ -25,11 +25,6 @@
 ;;   they may be reset inbetween instants
 ;; `safe?` is if the reactor is safe to react with
 
-;; a process is a (make-process (ControlTree -> RThread))
-(struct process (thunk)
-  #:constructor-name make-process)
-;; `thunk` constructs the initial thread for this process, given its control tree
-
 ;; a blocked is a (make-blocked ControlTree ControlTree RThread RThread)
 (struct blocked (parent blocking present absent)
   #:constructor-name make-blocked

@@ -6,7 +6,7 @@
    (define-signal S empty #:gather append)
    (define r
      (prime
-      (process
+      (thunk
        (begin (par& 1 2) (emit& S 1)))))
    (react! r)
    (check-true (last? S))
@@ -18,7 +18,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (suspend& 1 #:unless susp)))))
    (react! r)
    (check-false (last? O))
@@ -34,7 +34,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (abort& 1 #:after kill)))))
    (react! r)
    (check-true (last? O))
@@ -44,7 +44,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (abort& 1 #:after kill)))))
    (react! r kill)
    (check-true (last? O))
@@ -56,7 +56,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (abort& halt& #:after kill)))))
    (react! r kill)
    (check-false (last? O))
@@ -68,7 +68,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (abort& halt& #:after kill [x x])))))
    (react! r (list kill (list 1)))
    (check-false (last? O))
@@ -79,7 +79,7 @@
    (define-signal O #f #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (define-signal S)
        (emit& S)
        (emit& O
@@ -93,7 +93,7 @@
    (define-signal O #f #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (define-signal S)
        (emit& O
               (present& S 0 1)))))

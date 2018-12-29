@@ -3,7 +3,7 @@
 (module+ test
   (require rackunit)
   (test-begin
-   (define g (prime (process (void))))
+   (define g (prime (thunk (void))))
    (check-false (reactor-done? g))
    (check-not-exn (lambda () (react! g)))
    (check-true (reactor-done? g))
@@ -11,7 +11,7 @@
    (check-true (reactor-done? g))
    (check-not-exn (lambda () (react! g))))
   (test-begin
-   (define r (prime (process halt&)))
+   (define r (prime (thunk halt&)))
    (check-false (reactor-done? r))
    (check-false (reactor-suspended? r))
    (react! r)
@@ -30,7 +30,7 @@
   (test-begin
    (define done #f)
    (define p1
-     (process
+     (thunk
       pause&
       (set! done #t)))
    (define grp (prime p1))
@@ -43,7 +43,7 @@
    (define present #f)
    (define absent #f)
    (define p1
-     (process
+     (thunk
       (signal S
         (present& S (set! present #t) (set! absent #t)))))
    (define grp (prime p1))
@@ -58,7 +58,7 @@
    (define found #f)
    (define g1
      (prime
-      (process
+      (thunk
        (signal S
          (par&
           (begin pause& (emit& S))
@@ -71,7 +71,7 @@
    (define found #f)
    (define g1
      (prime
-      (process
+      (thunk
        (define-signal S)
        (par&
         (begin pause& (emit& S))
@@ -85,7 +85,7 @@
    (define-signal O2)
    (define r
      (prime
-      (process
+      (thunk
        (par& (emit& O1) (emit& O2)))))
    (react! r)
    (check-true (last? O1))
@@ -95,7 +95,7 @@
    (define-signal O2)
    (define r
      (prime
-      (process
+      (thunk
        (par& (begin pause& (emit& O1))
              (begin pause& (emit& O2))))))
    (react! r)
@@ -109,7 +109,7 @@
    (define-signal O)
    (define r
      (prime
-      (process
+      (thunk
        (await& I)
        (emit& O))))
    (react! r I)
@@ -123,7 +123,7 @@
    (define res #f)
    (define r
      (prime
-      (process
+      (thunk
        (define-signal S 0 #:gather +)
        (par&
         (emit& S 1)
@@ -138,7 +138,7 @@
    (define res #f)
    (define r
      (prime
-      (process
+      (thunk
        (define-signal S 0 #:gather +)
        (par&
         (emit& S 1)
@@ -152,16 +152,16 @@
    (check-equal? res 3))
   (test-begin
    (define res #f)
-   (define-process (add& S)
+   (define (add& S)
      (emit& S (add1 (last S)))
      pause&
-     (run& (add& S)))
+     (add& S))
    (define r
      (prime
-      (process
+      (thunk
        (signal ([S 0 #:gather +])
          (par&
-          (run& (add& S))
+          (add& S)
           (await&
            S
            [(? (lambda (x) (> x 3))) (set! res #t)]))))))
@@ -179,7 +179,7 @@
 
   (test-begin
    (define seen #f)
-   (define-process (await-when)
+   (define (await-when)
      (define-signal act)
      (define-signal S)
      (par&
@@ -188,7 +188,7 @@
        #:unless act)
       (begin (emit& act) pause&           pause& (emit& act))
       (begin             pause& (emit& S) pause& (emit& S))))
-   (define r (prime (await-when)))
+   (define r (prime await-when))
    (react! r)
    (check-false seen)
    (react! r)
@@ -198,50 +198,50 @@
 
   (test-begin
    (define-signal b)
-   (define r (prime (process (emit& b 1))))
+   (define r (prime (thunk (emit& b 1))))
    (check-exn #rx"Expected value carrying signal" (lambda () (react! r)))
    (check-false (reactor-safe? r)))
   (test-begin
    (define-signal b 0 #:gather +)
-   (define r (prime (process (emit& b))))
+   (define r (prime (thunk (emit& b))))
    (check-exn #rx"Expected pure signal" (lambda () (react! r)))
    (check-false (reactor-safe? r)))
   (test-begin
    (define f void)
    (define r
-     (prime (process (set! f (lambda () pause&)))))
+     (prime (thunk (set! f (lambda () pause&)))))
    (react! r)
-   (check-exn #rx"process escaped reactor context" f))
+   (check-exn #rx"escaped reactor context" f))
   (test-begin
    (define f void)
    (define-signal S)
    (define r
-     (prime (process (set! f (lambda () (present& S 1 2))))))
+     (prime (thunk (set! f (lambda () (present& S 1 2))))))
    (react! r)
-   (check-exn #rx"process escaped reactor context" f))
+   (check-exn #rx"escaped reactor context" f))
 
 
   (test-begin
    (define-signal S 0 #:gather +)
    (define/contract (test S)
-     (-> (signal/c number?) process?)
-     (process (emit& S 'a)))
+     (reactive-> (signal/c number?) any)
+     (emit& S 'a))
    (check-exn
     #rx"test: broke its own contract"
-    (lambda () (react! (prime (test S))))))
+    (lambda () (react! (prime test S)))))
   (test-begin
    (define-signal S 0 #:gather +)
    (define/contract (test S)
-     (-> (signal/c number?) process?)
-     (process (emit& S 2)))
+     (reactive-> (signal/c number?) any)
+     (emit& S 2))
    (check-not-exn
-    (lambda () (react! (prime (test S))))))
+    (lambda () (react! (prime test S)))))
   (test-begin
    (define-signal I)
    (define-signal O)
    (define r
      (prime
-      (process
+      (thunk
        (present& I (void) (begin (await& I) (emit& O))))))
    (react! r)
    (check-false (last? O))
@@ -255,7 +255,7 @@
    (define-signal O)
    (define r
      (prime
-      (process
+      (thunk
        (await& #:count 3 I)
        (emit& O))))
    (react! r)
@@ -271,7 +271,7 @@
    (define-signal O)
    (define r
      (prime
-      (process
+      (thunk
        (await& #:immediate I)
        (emit& O))))
    (react! r I)
@@ -281,7 +281,7 @@
    (define-signal O)
    (define r
      (prime
-      (process
+      (thunk
        (await& #:immediate #:count 3 I)
        (emit& O))))
    (react! r I)
@@ -294,7 +294,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (loop& (void)))))
    (check-exn
     #rx"loop& terminated in a single instant!"
@@ -303,7 +303,7 @@
   (test-begin
    (define r
      (prime
-      (process
+      (thunk
        (loop& pause&))))
    (check-not-exn (lambda () (react! r)))
    (check-not-exn (lambda () (react! r)))
@@ -311,19 +311,19 @@
   (test-begin
    (define-signal O)
    (define r
-     (prime (process (par&) (emit& O))))
+     (prime (thunk (par&) (emit& O))))
    (react! r)
    (check-true (last? O)))
 
   (test-begin
    (define r
-     (prime (process (loop& (par&)))))
+     (prime (thunk (loop& (par&)))))
    (check-exn
     #rx"loop& terminated in a single instant!"
     (lambda () (react! r))))
   (test-begin
    (define r
-     (prime (process (loop& (par& 1 2)))))
+     (prime (thunk (loop& (par& 1 2)))))
    (check-exn
     #rx"loop& terminated in a single instant!"
     (lambda () (react! r))))
@@ -333,7 +333,7 @@
    (define-signal S2)
    (define-signal O)
    (define r
-     (prime (process (loop& (await& (or S1 S2)) (emit& O)))))
+     (prime (thunk (loop& (await& (or S1 S2)) (emit& O)))))
    (react! r)
    (check-false (last? O))
    (react! r)

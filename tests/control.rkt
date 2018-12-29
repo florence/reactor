@@ -6,7 +6,7 @@
   (test-begin
    (define-signal S)
    (define-signal O)
-   (define-process I/O
+   (define (I/O)
      (suspend&
       (emit& O)
       #:unless S))
@@ -17,7 +17,7 @@
   (test-begin
    (define-signal S)
    (define-signal O)
-   (define-process I/O
+   (define (I/O)
      (suspend&
       (emit& O)
       #:unless S))
@@ -28,7 +28,7 @@
    (define-signal S1)
    (define-signal S2)
    (define-signal O)
-   (define-process I/O
+   (define (I/O)
      (suspend&
       (suspend&
        (emit& O)
@@ -43,7 +43,7 @@
    (check-false (last? O))
    (react! r S1 S2)
    (check-true (last? O)))
-  (define-process (suspend-loop O Ss)
+  (define (suspend-loop O Ss)
     (let loop ([i Ss])
       (cond
         [(empty? i) (emit& O)]
@@ -55,7 +55,7 @@
    (define-signal O)
    (define-signal S1)
    (define-signal S2)
-   (define r (prime (suspend-loop O (list S1 S2))))
+   (define r (prime suspend-loop O (list S1 S2)))
    (react! r S1)
    (check-false (last? O))
    (react! r S2)
@@ -67,7 +67,7 @@
    (define-signal S1)
    (define-signal S2)
    (define-signal S3)
-   (define r (prime (suspend-loop O (list S1 S2 S3))))
+   (define r (prime suspend-loop O (list S1 S2 S3)))
    (react! r S1 S2)
    (check-false (last? O))
    (react! r S1 S2)
@@ -86,7 +86,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (abort& halt& #:after kill [1 1])))))
    (react! r (list kill (list 1)))
    (check-false (last? O))
@@ -98,7 +98,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit& O (abort& halt& #:after kill [2 2])))))
    (react! r (list kill (list 1)))
    (check-false (last? O))
@@ -114,7 +114,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (par& (emit& O (abort& halt& #:after kill [2 2]))
              (emit& kill 1)))))
    (react! r)
@@ -132,7 +132,7 @@
    (define-signal O 0 #:gather +)
    (define r
      (prime
-      (process
+      (thunk
        (emit&
         O
         (abort&
@@ -154,7 +154,7 @@
    (test-begin
     (define-signal S 0 #:gather +)
     (define-signal O 0 #:gather +)
-    (define r (prime (process (loop& (await& S [v (emit& O (add1 v))])))))
+    (define r (prime (thunk (loop& (await& S [v (emit& O (add1 v))])))))
     (for ([i (in-range 10)])
       (react! r (list S (list i)))
       (react! r)
@@ -167,7 +167,7 @@
    (define-signal run)
    (define r
      (prime
-      (process
+      (thunk
        (suspend&
         (abort& 
          (par& (emit& O "hi") (emit& abt "bye")) pause&
@@ -189,7 +189,7 @@
    (define-signal B)
    (define-signal R)
    (define-signal O)
-   (define-process ABRO
+   (define (ABRO)
      (par& (await& #:immediate A) (await& #:immediate B))
      (emit& O)
      halt&)
@@ -205,7 +205,7 @@
    (define-signal B)
    (define-signal R)
    (define-signal O)
-   (define-process ABRO
+   (define (ABRO)
      (abort&
       (par& (await& #:immediate A) (await& #:immediate B))
       (emit& O)
@@ -223,7 +223,7 @@
    (define-signal B)
    (define-signal R)
    (define-signal O)
-   (define-process ABRO
+   (define (ABRO)
      (loop&
       (abort&
        (par& (await& #:immediate A) (await& #:immediate B))
@@ -252,7 +252,7 @@
    (define-signal S1)
    (define-signal S2)
    (define-signal O 1)
-   (define-process I/O
+   (define (I/O)
      (suspend&
       (loop& (emit& O 1) pause&)
       #:unless (or S1 S2)))

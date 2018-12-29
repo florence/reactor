@@ -6,7 +6,6 @@
   [pure-signal? predicate/c]
   [value-signal? predicate/c]
   [reactor? predicate/c]
-  [process? predicate/c]
   [tree? predicate/c]
   [struct branch ([values list?] [children (listof tree?)]) #:omit-constructor]
   [struct leaf ([values list?]) #:omit-constructor]
@@ -24,14 +23,12 @@
   [continuation-mark-set-tree->tree
    (-> continuation-mark-set-tree? any/c tree?)]
   ;; running
-  [prime (-> process? reactor?)]
+  [prime (->i ([p (args) (procedure-arity-includes/c (length args))])
+              #:rest [args any/c]
+              [_ reactor?])]
   [react! (-> (and/c reactor? reactor-safe?) (or/c pure-signal? (list/c value-signal? (listof any/c))) ... any)])
- ;; process creation
- (rename-out [process* process])
- define-process
  ;; forms
  signal/c
- run&
  present&
  (rename-out [signal* signal])
  define-signal
@@ -45,7 +42,7 @@
  loop&
  halt&
  with-handlers&
- define-component)
+ reactive->)
 (require "data.rkt" "runtime.rkt" "compiler.rkt" "ct.rkt")
 
 (module reader syntax/module-reader

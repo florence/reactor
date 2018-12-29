@@ -1,7 +1,6 @@
 #lang racket
 (provide emit-pure
          emit-value
-         runf
          presentf
          pausef
          emitf
@@ -20,7 +19,8 @@
          activate-suspends!
          continue-at
          with-handler-pred
-         reactor-continuation-marks)
+         reactor-continuation-marks
+         reactive->)
 (require reactor/data
          reactor/ct
          reactor/control
@@ -38,9 +38,9 @@
 
 
 
-;; Process -> Reactor
-(define (prime proc)
-  (make-reactor (process-thunk proc)))
+;; Process Any ... -> Reactor
+(define (prime proc . args)
+  (make-reactor (lambda () (apply proc args))))
 
 ;; Reactor (Listof (or PureSignal (List ValueSignal (list Any ...)))) -> Any
 ;; run a reaction on this reactor
@@ -71,11 +71,19 @@
   (define top-tree (make-top))
   (define kont #f)
   (define initial-thread
-    (make-rthread empty-calling-continuation (proc top-tree)))
+    (make-rthread empty-calling-continuation proc))
   (set-top-child! top-tree initial-thread)
   (reparent! initial-thread top-tree)
   (reactor (list initial-thread) (make-hasheq) top-tree (make-hasheq) empty #t))
 
+(define-syntax reactive->
+  (syntax-parser
+    [(_ dom ... range)
+     #'(->* (dom ...)
+            #:pre/desc (if (the-current-reactor)
+                           #t
+                           "Called outside of a reactor")
+            range)]))
 
 ;                                                                                   
 ;                                                                                   
@@ -251,9 +259,6 @@
 (define last? signal-last?)
 (define (default S)
   (apply values (value-signal-default S)))
-
-;; Process -> Any
-(define (runf proc control-tree) (((process-thunk proc) control-tree)))
 
 ;; PureSignal -> Void
 ;; emit the signal

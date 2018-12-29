@@ -17,7 +17,7 @@
 
 
 (define (raise-process-escape-error)
-  (error "process escaped reactor context"))
+  (error "reactive code escaped reactor context"))
 
 ;; basic continuation grabbing
 (define-syntax %%
